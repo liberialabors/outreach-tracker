@@ -30,7 +30,7 @@
     }).then(function (r) {
       if (r.ok) return r.data;
       var err = new ApiError(r.error, r.message || 'Something went wrong.');
-      if (!opts.open && ['AUTH_EXPIRED', 'AUTH_REQUIRED', 'NOT_REGISTERED'].indexOf(r.error) !== -1) window.Auth.lost(err);
+      if (!opts.open && ['AUTH_EXPIRED', 'AUTH_REQUIRED', 'NOT_REGISTERED', 'NOT_CONFIGURED', 'CLIENT_MISMATCH'].indexOf(r.error) !== -1) window.Auth.lost(err);
       throw err;
     });
   }
