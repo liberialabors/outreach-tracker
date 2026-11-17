@@ -25,7 +25,16 @@
     job_children: '<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M3 20c.6-3.6 3-5.5 6-5.5s5.4 1.9 6 5.5M18 8v6M15 11h6"/></svg>',
     msg: '<svg viewBox="0 0 24 24"><path d="M4 5h16v11H8l-4 4z"/><path d="M8 9h8M8 12h5"/></svg>',
     bell: '<svg viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 0112 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 004 0"/></svg>',
-    more: '<svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>'
+    more: '<svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>',
+    account: '<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4.2 4-6.5 8-6.5s7 2.3 8 6.5"/></svg>',
+    tasks: '<svg viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12"/><path d="M3.5 6l1 1 2-2M3.5 12l1 1 2-2M3.5 18l1 1 2-2"/></svg>',
+    reminders: '<svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="7.5"/><path d="M12 9v4l2.5 2M4 4l3 2.5M20 4l-3 2.5"/></svg>',
+    sync: '<svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 01-14 5.3M4 12a8 8 0 0114-5.3"/><path d="M18 3v4h-4M6 21v-4h4"/></svg>',
+    templates: '<svg viewBox="0 0 24 24"><path d="M4 5h16v11H8l-4 4z"/><path d="M8 9h8M8 12h5"/></svg>',
+    excel: '<svg viewBox="0 0 24 24"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5M10 12l4 5M14 12l-4 5"/></svg>',
+    help: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 114 2c-.9.6-1.5 1.1-1.5 2.2"/><path d="M12 17h.01"/></svg>',
+    phone: '<svg viewBox="0 0 24 24"><rect x="6.5" y="2.5" width="11" height="19" rx="2.5"/><path d="M10.5 18.5h3"/></svg>',
+    google: '<svg viewBox="0 0 24 24"><path d="M20.6 12.2c0-.6-.1-1.2-.2-1.8H12v3.4h4.8a4.1 4.1 0 01-1.8 2.7v2.2h2.9c1.7-1.6 2.7-3.9 2.7-6.5z" fill="#4285F4" stroke="none"/><path d="M12 21c2.4 0 4.5-.8 5.9-2.2l-2.9-2.2c-.8.5-1.8.9-3 .9-2.3 0-4.3-1.6-5-3.7H4v2.3A9 9 0 0012 21z" fill="#34A853" stroke="none"/><path d="M7 13.8a5.4 5.4 0 010-3.5V8H4a9 9 0 000 8.1z" fill="#FBBC05" stroke="none"/><path d="M12 6.6c1.3 0 2.5.5 3.4 1.3l2.6-2.6A9 9 0 004 8l3 2.3c.7-2.1 2.7-3.7 5-3.7z" fill="#EA4335" stroke="none"/></svg>'
   };
 
   /* ---------- small helpers ---------- */
@@ -82,65 +91,139 @@
   }
 
   /* ---------- sign-in ---------- */
+  var HOW_KEY = 'ot.how';   // which way this phone signed in last time (google | phone); nothing personal
   function showLogin(message) {
     me = null;
     var t = document.getElementById('toast'); if (t) t.className = '';
     if (location.hash) history.replaceState(null, '', location.pathname + location.search);   // next sign-in opens on Home
-    var pin = true;   // the server refuses if PIN sign-in is switched off
+    var last = ''; try { last = localStorage.getItem(HOW_KEY) || ''; } catch (e) { /* private mode */ }
     root.innerHTML =
-      '<div class="login"><div class="login-head"><img src="img/logo-256.png" alt="LivingSeed" width="112" height="112"><h1>Outreach Tracker</h1><p>Sign in to continue</p></div>' +
-      '<div class="login-body">' +
-        '<div class="error" id="login-msg" role="alert">' + h(message || '') + '</div>' +
-        (Auth.googleAvailable() ? '<div id="gbtn"></div><p class="small muted center" style="margin-top:8px">Use the Google account your coordinator registered.</p><div class="or">or</div>' : '') +
-        (pin ? '<form id="pin-form" novalidate>' +
-          '<h2 id="pin-title">Sign in with your phone number</h2>' +
-          '<label class="field">Phone number<input type="tel" name="phone" autocomplete="tel" inputmode="tel" placeholder="0770 000 000" required></label>' +
-          '<div id="setup-fields" hidden>' +
-            '<label class="field">Setup code<span class="hint">6 digits from your coordinator. It works once.</span><input type="text" name="code" inputmode="numeric" maxlength="6" autocomplete="one-time-code"></label>' +
-          '</div>' +
-          '<label class="field"><span id="pin-label">PIN</span><span class="hint" id="pin-hint">Your 6-digit PIN</span><input type="password" name="pin" inputmode="numeric" maxlength="6" autocomplete="off" required></label>' +
-          '<div id="confirm-field" hidden><label class="field">Type the PIN again<input type="password" name="pin2" inputmode="numeric" maxlength="6" autocomplete="off"></label></div>' +
-          '<label class="check"><input type="checkbox" name="shared"><span><strong>This is not my phone</strong><br><span class="small muted">You will be signed out when the app closes, and nothing is kept on this phone.</span></span></label>' +
-          '<div class="error" id="pin-err" role="alert"></div>' +
-          '<button class="btn block" type="submit" id="pin-go" style="margin-top:8px">Sign in</button>' +
-          '<p class="center"><button type="button" class="linkbtn" id="pin-toggle">First time, or have a new setup code?</button></p>' +
-        '</form>' : '') +
-      '</div></div>';
-
-    if (Auth.googleAvailable()) {
+      '<div class="login"><div class="login-head"><img src="img/logo-256.png" alt="LivingSeed" width="120" height="120"><h1>Outreach Tracker</h1><p id="login-sub">Sign in to continue</p></div>' +
+      '<div class="login-body"><div class="error" id="login-msg" role="alert">' + h(message || '') + '</div><div id="login-step"></div><div id="install-box"></div></div></div>';
+    var step = !Auth.googleAvailable() ? 'phone' : last === 'google' ? 'google' : last === 'phone' ? 'phone' : 'choose';
+    loginStep(step);
+    drawInstallBox();
+  }
+  function loginStep(step) {
+    var box = $('#login-step'); if (!box) return;
+    var back = Auth.googleAvailable() ? '<button type="button" class="linkbtn back" id="how-back">‹ Choose another way to sign in</button>' : '';
+    if (step === 'choose') {
+      $('#login-sub').textContent = 'Sign in to continue';
+      box.innerHTML = '<h2>How do you sign in?</h2><p class="small muted">Your coordinator chose one of these when he added you.</p>' +
+        '<div class="choices">' +
+          '<button type="button" class="choice" id="how-google"><span class="ci">' + ICON.google + '</span><span class="grow"><strong>With my Google email</strong><br><span class="small muted">Gmail or another Google account</span></span><span aria-hidden="true">›</span></button>' +
+          '<button type="button" class="choice" id="how-phone"><span class="ci">' + ICON.phone + '</span><span class="grow"><strong>With my phone number</strong><br><span class="small muted">A 6-digit PIN, no email needed</span></span><span aria-hidden="true">›</span></button>' +
+        '</div>';
+      $('#how-google').onclick = function () { loginStep('google'); };
+      $('#how-phone').onclick = function () { loginStep('phone'); };
+      return;
+    }
+    if (step === 'google') {
+      $('#login-sub').textContent = 'Sign in with Google';
+      box.innerHTML = back + '<h2>Sign in with your Google email</h2>' +
+        '<ol class="steps"><li>Tap the button below.</li><li>Choose the Google account (email) your coordinator added.</li>' +
+          '<li>The first time, Google asks to share your name and email with Outreach Tracker. Tap <strong>Continue</strong>.</li></ol>' +
+        '<div id="gbtn"></div>' +
+        '<p class="small muted center" style="margin-top:12px">"Access not granted"? Your email is not added yet, or it is a different one. Ask your coordinator.</p>';
+      var b = $('#how-back'); if (b) b.onclick = function () { loginStep('choose'); };
       Auth.renderGoogleButton($('#gbtn')).catch(function () {
         $('#gbtn').innerHTML = '<p class="small muted center">Google Sign-In could not load. Check your internet.</p>';
       });
+      try { localStorage.setItem(HOW_KEY, 'google'); } catch (e) { /* ignore */ }
+      return;
     }
-    var form = $('#pin-form'), setup = false;
-    $('#pin-toggle').onclick = function () {
-      setup = !setup;
-      $('#setup-fields').hidden = !setup; $('#confirm-field').hidden = !setup;
-      $('#pin-title').textContent = setup ? 'Set up your PIN' : 'Sign in with your phone number';
-      $('#pin-label').textContent = setup ? 'Choose a PIN' : 'PIN';
-      $('#pin-hint').textContent = setup ? '6 digits you will remember. Not 123456 or 111111.' : 'Your 6-digit PIN';
-      $('#pin-go').textContent = setup ? 'Save PIN and sign in' : 'Sign in';
-      this.textContent = setup ? 'I already have a PIN' : 'First time, or have a new setup code?';
-      $('#pin-err').textContent = '';
+    // Phone number + PIN, with a clear first-time path: setup code first, then the PIN.
+    $('#login-sub').textContent = 'Sign in with your phone number';
+    box.innerHTML = back + '<form id="pin-form" novalidate>' +
+      '<h2 id="pin-title">Sign in with your phone number</h2>' +
+      '<label class="field">Your phone number<span class="hint">The number your coordinator added</span><input type="tel" name="phone" autocomplete="tel" inputmode="tel" placeholder="0770 000 000" required></label>' +
+      '<div id="ph-ask"><p class="q">Have you chosen your PIN before?</p><div class="stack">' +
+        '<button type="button" class="btn block" id="pin-have">Yes, I have my PIN</button>' +
+        '<button type="button" class="btn ghost block" id="pin-first">No, this is my first time</button></div>' +
+        '<p class="small muted center" style="margin-top:8px">Also choose "first time" if your coordinator sent you a new setup code.</p></div>' +
+      '<div id="ph-code" hidden><p class="stepno">Step 1 of 2</p><h3>Enter your setup code</h3>' +
+        '<label class="field">Setup code<span class="hint">6 digits your coordinator sent you by WhatsApp or SMS. It works once, for 7 days.</span>' +
+        '<input type="text" name="code" inputmode="numeric" maxlength="6" autocomplete="one-time-code"></label>' +
+        '<button type="button" class="btn block" id="code-next">Next</button></div>' +
+      '<div id="ph-pin" hidden><p class="stepno" id="pin-stepno"></p>' +
+        '<label class="field"><span id="pin-label">Your PIN</span><span class="hint" id="pin-hint">Your 6-digit PIN</span><input type="password" name="pin" inputmode="numeric" maxlength="6" autocomplete="off"></label>' +
+        '<div id="confirm-field" hidden><label class="field">Type the same PIN again<input type="password" name="pin2" inputmode="numeric" maxlength="6" autocomplete="off"></label></div>' +
+        '<label class="check"><input type="checkbox" name="shared"><span><strong>This is not my phone</strong><br><span class="small muted">You will be signed out when the app closes, and nothing is kept on this phone.</span></span></label>' +
+        '<button class="btn block" type="submit" id="pin-go" style="margin-top:8px">Sign in</button>' +
+        '<p class="center"><button type="button" class="linkbtn" id="pin-other"></button></p></div>' +
+      '<div class="error" id="pin-err" role="alert"></div></form>';
+    var b2 = $('#how-back'); if (b2) b2.onclick = function () { loginStep('choose'); };
+    try { localStorage.setItem(HOW_KEY, 'phone'); } catch (e) { /* ignore */ }
+    var form = $('#pin-form'), f = form.elements, err = $('#pin-err'), mode = '';
+    function phoneOk() {
+      if (f.phone.value.replace(/\D/g, '').length < 7) { err.textContent = 'Enter your phone number first.'; f.phone.focus(); return false; }
+      return true;
+    }
+    function show(m) {
+      mode = m; err.textContent = '';
+      $('#ph-ask').hidden = m !== 'ask'; $('#ph-code').hidden = m !== 'code'; $('#ph-pin').hidden = m !== 'pin' && m !== 'choose';
+      $('#confirm-field').hidden = m !== 'choose';
+      $('#pin-title').textContent = m === 'ask' || m === 'pin' ? 'Sign in with your phone number' : 'First time: set up your PIN';
+      $('#pin-stepno').textContent = m === 'choose' ? 'Step 2 of 2' : '';
+      $('#pin-stepno').hidden = m !== 'choose';
+      $('#pin-label').textContent = m === 'choose' ? 'Choose your PIN' : 'Your PIN';
+      $('#pin-hint').textContent = m === 'choose' ? '6 digits you will remember. Not 123456 or 111111. Do not tell anyone.' : 'The 6 digits you chose';
+      $('#pin-go').textContent = m === 'choose' ? 'Save my PIN and sign in' : 'Sign in';
+      $('#pin-other').textContent = m === 'choose' ? '‹ Change the setup code' : 'Forgot your PIN? Ask your coordinator for a new code, then tap here';
+      if (m === 'code') f.code.focus(); else if (m === 'pin' || m === 'choose') f.pin.focus();
+    }
+    $('#pin-have').onclick = function () { if (phoneOk()) show('pin'); };
+    $('#pin-first').onclick = function () { if (phoneOk()) show('code'); };
+    $('#code-next').onclick = function () {
+      if (!/^\d{6}$/.test(f.code.value.trim())) { err.textContent = 'The setup code is 6 digits.'; return; }
+      show('choose');
     };
+    $('#pin-other').onclick = function () { f.pin.value = ''; f.pin2.value = ''; show('code'); };
+    f.code.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); $('#code-next').click(); } });
+    show('ask');
     form.addEventListener('submit', function (ev) {
       ev.preventDefault();
-      var f = form.elements, err = $('#pin-err'); err.textContent = '';
+      if (mode === 'ask') { $('#pin-have').click(); return; }
+      if (mode === 'code') { $('#code-next').click(); return; }
+      err.textContent = '';
+      var setup = mode === 'choose';
       var payload = { phone: f.phone.value.trim(), pin: f.pin.value.trim(), shared: f.shared.checked };
-      if (!payload.phone) { err.textContent = 'Enter your phone number.'; return; }
+      if (!phoneOk()) return;
       if (!/^\d{6}$/.test(payload.pin)) { err.textContent = 'The PIN is 6 digits.'; return; }
       if (setup) {
         payload.code = f.code.value.trim();
-        if (!/^\d{6}$/.test(payload.code)) { err.textContent = 'The setup code is 6 digits.'; return; }
-        if (f.pin2.value.trim() !== payload.pin) { err.textContent = 'The two PINs are not the same.'; return; }
+        if (f.pin2.value.trim() !== payload.pin) { err.textContent = 'The two PINs are not the same. Type them again.'; f.pin2.value = ''; return; }
       }
       var btn = $('#pin-go'); btn.disabled = true;
       Api.call(setup ? 'pinSetup' : 'pinLogin', payload, { open: true }).then(function (s) {
         Auth.startSession(s.token, s.shared);
         return start();
-      }).catch(function (e) { err.textContent = e.message; btn.disabled = false; });
+      }).catch(function (e) {
+        btn.disabled = false;
+        if (setup && e.code === 'BAD_CODE') { show('code'); f.code.select(); }
+        err.textContent = e.message;
+      });
     });
   }
+  /** Install the app: the phone's own install prompt when it offers one; on iPhone, the Safari steps. */
+  function installHtml(compact) {
+    if (window.matchMedia && matchMedia('(display-mode: standalone)').matches) return '';
+    if (window.navigator.standalone) return '';
+    var ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
+    if (!window.__installPrompt && !ios) return '';
+    return '<div class="install' + (compact ? ' compact' : '') + '"><img src="icons/icon-192.png" alt="" width="44" height="44"><div class="grow"><strong>Install the app</strong><br>' +
+      '<span class="small muted">' + (window.__installPrompt ? 'Opens from your home screen and works with no signal.' : 'In Safari tap Share, then "Add to Home Screen".') + '</span></div>' +
+      (window.__installPrompt ? '<button type="button" class="btn mini" data-install>Install</button>' : '') + '</div>';
+  }
+  function wireInstall(el) {
+    var b = $('[data-install]', el);
+    if (b) b.onclick = function () {
+      var p = window.__installPrompt; if (!p) return; window.__installPrompt = null;
+      p.prompt(); p.userChoice.then(function () { drawInstallBox(); if (me) render(); });
+    };
+  }
+  function drawInstallBox() { var box = $('#install-box'); if (box) { box.innerHTML = installHtml(); wireInstall(box); } }
+  window.addEventListener('beforeinstallprompt', function () { setTimeout(function () { drawInstallBox(); if (me && route().page === 'more') render(); }, 0); });
 
   function showSetupNeeded() {
     root.innerHTML = '<div class="login"><div class="login-head"><img src="img/logo-256.png" alt="LivingSeed" width="112" height="112"><h1>Outreach Tracker</h1><p>Almost ready</p></div>' +
@@ -163,12 +246,26 @@
     var t = [['home', 'Home'], ['meetings', 'Meetings']];
     if (me.can.record || jobsOf('followup').length) t.push(['followup', 'Follow-up']);
     if (me.can.record || jobsOf('children').length) t.push(['participants', 'Children']);
-    if (!me.can.record) t.push(['reports', 'Reports']);
+    if (!me.can.record && me.can.reports) t.push(['reports', 'Reports']);
     if (t.length < 5 && !me.can.record) t.push(['stats', 'Statistics']);
     t.push(['more', 'More']);
     return t.slice(0, 6);
   }
   /** Pages that exist without a tab of their own, and the tab that lights up for them. */
+  /** On a laptop the sidebar lists every menu, so More is only needed for the account and settings. */
+  function sideItems(tabs) {
+    var has = {}; tabs.forEach(function (t) { has[t[0]] = true; });
+    return [
+      ['tasks', 'Tasks', true],
+      ['reports', 'Combined report', me.can.reports],
+      ['stats', 'Statistics', true],
+      ['reminders', 'Reminders', me.can.remind],
+      ['sync', 'Offline and sync', true],
+      ['people', 'Team', me.can.manage_users || me.user.role === 'ASSISTANT'],
+      ['templates', 'Message templates', me.can.record || jobsOf('followup').length > 0],
+      ['centers', 'Centers', me.can.manage_centers]
+    ].filter(function (x) { return x[2] && !has[x[0]]; });
+  }
   var EXTRA = { centers: 'more', take: 'meetings', people: 'more', stats: 'more', templates: 'more', tasks: 'more', reminders: 'more', notifications: 'home', reports: 'more', sync: 'more' };
   var VIEWS = {};
   var leaveGuard = null;          // set by a screen with unsaved changes; returns true if it is fine to leave
@@ -179,7 +276,7 @@
     var allowed = tabs.some(function (t) { return t[0] === page; }) ||
       (page === 'centers' && me.can.manage_centers) || (page === 'take' && (me.can.record || jobsOf('report').length)) ||
       (page === 'people' && (me.can.manage_users || me.user.role === 'ASSISTANT')) ||
-      page === 'stats' || page === 'reports' || page === 'sync' || (page === 'templates' && (me.can.record || jobsOf('followup').length)) || page === 'tasks' || page === 'notifications' ||
+      page === 'stats' || (page === 'reports' && me.can.reports) || page === 'sync' || (page === 'templates' && (me.can.record || jobsOf('followup').length)) || page === 'tasks' || page === 'notifications' ||
       (page === 'reminders' && me.can.remind);
     if (!allowed) { page = 'home'; parts = ['home']; }
     var tab = tabs.some(function (t) { return t[0] === page; }) ? page : (EXTRA[page] || page);
@@ -192,16 +289,27 @@
     root.innerHTML =
       '<header class="top"><a class="brand" href="#/home" aria-label="Outreach Tracker, home"><img src="img/logo-96.png" alt="" width="34" height="34"><strong>Outreach Tracker</strong></a>' +
       '<a class="sync-pill" href="#/sync" hidden></a><span class="chip">' + h(ROLE[me.user.role]) + '</span>' +
+      '<button type="button" class="help-btn" aria-label="Help for this screen">' + ICON.help + '</button>' +
       '<a class="bell" href="#/notifications" aria-label="Notifications' + (me.unread ? ', ' + me.unread + ' new' : '') + '">' + ICON.bell +
       (me.unread ? '<span class="dotn">' + (me.unread > 9 ? '9+' : me.unread) + '</span>' : '') + '</a></header>' +
       '<main id="view"></main>' +
-      '<nav class="tabs" aria-label="Main">' + r.tabs.map(function (t) {
+      '<nav class="tabs" aria-label="Main">' + r.tabs.filter(function (t) { return t[0] !== 'more'; }).map(function (t) {
         return '<a class="tab" href="#/' + t[0] + '"' + (t[0] === r.tab ? ' aria-current="page"' : '') + '>' + ICON[t[0]] + '<span>' + t[1] + '</span></a>';
-      }).join('') + '</nav>';
+      }).join('') +
+      sideItems(r.tabs).map(function (t, i) {
+        return (i === 0 ? '<span class="side-sep side-only" aria-hidden="true"></span>' : '') +
+          '<a class="tab side-only' + (r.tab === 'more' && r.page === t[0] ? ' cur-side' : '') + '" href="#/' + t[0] + '">' + ICON[t[0]] + '<span>' + t[1] + '</span></a>';
+      }).join('') +
+      '<a class="tab tab-more' + (r.tab === 'more' ? ' cur-phone' : '') + (r.page === 'more' ? ' cur-side' : '') + '" href="#/more">' +
+        '<span class="phone-only">' + ICON.more + '</span><span class="side-only">' + ICON.account + '</span>' +
+        '<span class="phone-only">More</span><span class="side-only">Account</span></a>' +
+      '</nav>';
     document.title = 'Outreach Tracker';
     syncPill();
+    $('.help-btn').onclick = function () { showHelp(r.page); };
     VIEWS[r.page]($('#view'), r.args);
     window.scrollTo(0, 0);
+    maybeTour(r.page);
   }
   function go(hash) { if (location.hash === hash) render(); else location.hash = hash; }
   function fail(e) { busy(false); if (me) toast(e.message, true); }
@@ -333,18 +441,43 @@
       b.onclick = function () { openJob((me.jobs || []).filter(function (j) { return j.task_id === b.dataset.job; })[0]); };
     });
   }
+  /** A small statistic card; tappable when it leads somewhere. */
+  function statCard(n, label, sub, href, tone) {
+    var tag = href ? 'a' : 'div';
+    return '<' + tag + ' class="stat' + (tone ? ' ' + tone : '') + '"' + (href ? ' href="' + href + '"' : '') + '><b>' + h(n) + '</b><span class="l">' + h(label) + '</span>' +
+      (sub ? '<span class="s">' + h(sub) + '</span>' : '') + '</' + tag + '>';
+  }
+  function homeCards(H, today) {
+    var tm = H.stats && H.stats.this_month, cards = [];
+    if (tm) {
+      var diff = tm.present - (tm.last_month_present || 0);
+      cards.push(statCard(tm.present, 'Present this month', tm.last_month_present === undefined ? '' :
+        diff > 0 ? diff + ' more than last month' : diff < 0 ? -diff + ' fewer than last month' : 'Same as last month', '#/stats', diff < 0 ? 'down' : diff > 0 ? 'up' : ''));
+      cards.push(statCard(tm.first_timers, 'First-timers', 'This month', '#/stats'));
+      cards.push(statCard(tm.decisions, 'Decisions', 'This month', '#/stats'));
+      cards.push(statCard(tm.absentees, 'Absent', 'At least once this month', me.can.record || jobsOf('followup').length ? '#/followup' : '', tm.absentees ? 'warn' : ''));
+    }
+    if (H.stats && H.stats.active_children !== undefined) cards.push(statCard(H.stats.active_children, 'Active children', 'In ' + (me.centers.length === 1 ? 'your center' : plural(me.centers.filter(function (c) { return c.status === 'active'; }).length, 'center')), me.can.record ? '#/participants' : '#/stats'));
+    if (H.stats && H.stats.retention) cards.push(statCard(H.stats.retention.pct + '%', 'Came back', H.stats.retention.returned + ' of ' + H.stats.retention.first_timers + ' first-timers, 6 months', '#/stats'));
+    if (H.followups) cards.push(statCard(H.followups.count, 'Need a follow-up', H.followups.birthdays ? plural(H.followups.birthdays, 'birthday') + ' coming' : 'Calls and visits to make', '#/followup', H.followups.count ? 'warn' : ''));
+    var m = (H.meetings || []).filter(function (x) { return x.date <= today; })[0];
+    if (m && m.centers.length > 1) {
+      var done = m.centers.filter(function (c) { return c.state === 'submitted'; }).length;
+      cards.push(statCard(done + ' of ' + m.centers.length, 'Centers reported', fmtDate(m.date), '#/meetings', done < m.centers.length ? 'warn' : ''));
+    }
+    return cards.length ? '<div class="stats-cards">' + cards.join('') + '</div>' : '';
+  }
   function viewHome(el) {
     var first = me.user.name.split(' ')[0], H = homeData || {}, today = me.today || new Date().toISOString().slice(0, 10);
     var tm = H.stats && H.stats.this_month;
     var monthName = new Date(today.slice(0, 7) + '-15T12:00:00Z').toLocaleDateString('en-GB', { month: 'long', timeZone: 'UTC' });
     var html =
       '<section class="band"><h1>Hello, ' + h(first) + '</h1><p class="sub">' + h(ROLE[me.user.role]) + (me.scope.all ? ', all programs' : '') + '</p>' +
-      (tm ? '<div class="nums"><div><b>' + tm.present + '</b><span>present</span></div><div><b>' + tm.first_timers + '</b><span>new</span></div>' +
-        '<div><b>' + tm.decisions + '</b><span>decisions</span></div><div><b>' + tm.absentees + '</b><span>absent</span></div></div>' +
-        '<p class="month">' + h(monthName) + ' so far, ' + tm.reports + (tm.reports === 1 ? ' report' : ' reports') + '</p>' : '') + '</section>';
+      (tm ? '<p class="month">' + h(monthName) + ' so far, ' + plural(tm.reports, 'report') + '</p>' : '') + '</section>' +
+      homeCards(H, today);
     if (Auth.isShared()) html += '<div class="card alert-card"><span class="grow"><strong>Borrowed phone</strong><br><span class="small">You will be signed out when you close the app. Tap More, then Sign out, when you finish.</span></span></div>';
     if ((me.jobs || []).length) html += '<h3>Handed to you</h3>' + me.jobs.map(jobCard).join('');
-    if (H.followups && (H.followups.count || H.followups.birthdays)) {
+    if (!H.stats && H.followups && (H.followups.count || H.followups.birthdays)) {
       var n = H.followups.count, b = H.followups.birthdays;
       html += '<a class="card alert-card" href="#/followup"><span class="grow"><strong>' + (n ? n + (n === 1 ? ' child needs' : ' children need') + ' a follow-up' : 'Follow-up') + '</strong>' +
         (b ? '<br><span class="small">' + b + (b === 1 ? ' birthday' : ' birthdays') + ' coming up</span>' : '') + '</span><span aria-hidden="true">›</span></a>';
@@ -374,7 +507,7 @@
       (m.centers.length > 1 ? '<p class="small muted" style="margin-top:8px">' + (missing.length ? missing.length + ' of ' + m.centers.length + ' centers have not submitted yet: ' +
         missing.map(function (c) { return h(c.name); }).join(', ') + '.' : 'Every center has submitted.') + '</p>' : '') +
       '<div class="stack" style="margin-top:10px">' + (missing.length && me.can.remind && m.date <= today ? '<a class="btn ghost block" href="#/reminders/' + h(m.meeting_id) + '">Remind the centers that have not submitted</a>' : '') +
-      (m.date <= today && m.centers.some(function (c) { return c.state === 'submitted'; }) ? '<a class="btn quiet block" href="#/reports/' + h(m.meeting_id) + '">Combined report</a>' : '') + '</div>';
+      (me.can.reports && m.date <= today && m.centers.some(function (c) { return c.state === 'submitted'; }) ? '<a class="btn quiet block" href="#/reports/' + h(m.meeting_id) + '">Combined report</a>' : '') + '</div>';
     wireMeetingCards(box, meetings);
   }
   /** Home appears at once from what was remembered, then refreshes. */
@@ -587,7 +720,7 @@
           (c.state !== 'none' ? '<br><span class="sub">' + c.total_present + ' present' + (c.total_first_timers ? ' · ' + c.total_first_timers + ' new' : '') + '</span>' : '') + '</span>' +
           '<span class="badge ' + st[1] + '">' + h(label) + '</span></' + (tap ? 'button' : 'div') + '>';
       }).join('') + '</div>' : '<p class="muted small">No centers of yours take part in this meeting.</p>') +
-      (!compact && m.date <= (me.today || '9') && m.centers.some(function (c) { return c.state === 'submitted'; }) ?
+      (!compact && me.can.reports && m.date <= (me.today || '9') && m.centers.some(function (c) { return c.state === 'submitted'; }) ?
         '<a class="btn quiet block" href="#/reports/' + h(m.meeting_id) + '" style="margin-top:12px">Combined report</a>' : '') +
       '</div>';
   }
@@ -1877,8 +2010,9 @@
       .sort(function (a, b) { return a.date < b.date ? -1 : 1; })[0];
     var start = next ? 'Hello {name}, our next meeting is on {date}: "{theme}". We look forward to seeing you there!'
       : 'Hello {name}, ';
-    var d = sheet('Message all children of ' + c.name,
-      '<div class="seg"><label><input type="radio" name="aud" value="child" checked><span>Each child</span></label><label><input type="radio" name="aud" value="guardian"><span>Guardians</span></label></div>' +
+    var d = sheet('Message everyone at ' + c.name,
+      '<p class="small muted">Send to</p><div class="seg three"><label><input type="radio" name="aud" value="child" checked><span>Children</span></label>' +
+        '<label><input type="radio" name="aud" value="guardian"><span>Guardians</span></label><label><input type="radio" name="aud" value="both"><span>Both</span></label></div>' +
       '<p class="small muted" id="aud-note"></p>' +
       '<label class="field">Message<textarea name="msg" rows="5" maxlength="700">' + h(start) + '</textarea></label>' +
       '<p class="small muted">{name} becomes each person\'s name when you send one by one. {child} {center} {date} {theme} also work.</p>' +
@@ -1889,12 +2023,19 @@
       '<p class="small muted" style="margin-top:8px">Sending to everyone at once works on most Android phones. On an iPhone, send one by one.</p>');
     function people() {
       var aud = d.querySelector('[name=aud]:checked').value, seen = {}, out = [], none = 0;
-      kids.forEach(function (k) {
-        var toChild = aud === 'child' && k.phone, num = waNumber(toChild ? k.phone : k.guardian_phone);
-        if (!num) { none++; return; }
-        if (seen[num]) return;   // brothers with the same guardian get one message
+      var add = function (k, to) {
+        var num = waNumber(to === 'child' ? k.phone : k.guardian_phone);
+        if (!num || seen[num]) return !!num;   // brothers with the same guardian get one message
         seen[num] = true;
-        out.push({ k: k, num: num, name: toChild ? firstName(k.name) : (k.guardian_name || ''), to: toChild ? 'child' : 'guardian' });
+        out.push({ k: k, num: num, name: to === 'child' ? firstName(k.name) : (k.guardian_name || ''), to: to });
+        return true;
+      };
+      kids.forEach(function (k) {
+        var any;
+        if (aud === 'both') { var a = k.phone ? add(k, 'child') : false, b = k.guardian_phone ? add(k, 'guardian') : false; any = a || b; }
+        else if (aud === 'child') any = k.phone ? add(k, 'child') : (k.guardian_phone ? add(k, 'guardian') : false);
+        else any = k.guardian_phone ? add(k, 'guardian') : false;
+        if (!any) none++;
       });
       return { list: out, none: none };
     }
@@ -1904,7 +2045,8 @@
     function update() {
       var p = people(), aud = d.querySelector('[name=aud]:checked').value;
       $('#aud-note', d).textContent = p.list.length + (p.list.length === 1 ? ' person' : ' people') +
-        (aud === 'child' ? ' (the guardian when a child has no phone)' : '') + (p.none ? '. ' + p.none + ' without any phone number are left out.' : '.');
+        (aud === 'child' ? ' (the guardian when a child has no phone)' : aud === 'both' ? ': each child with a phone and each guardian' : '') +
+        (p.none ? '. ' + plural(p.none, 'child', 'children') + ' without a number for this are left out.' : '.');
       $('#sms-all', d).href = 'sms:' + p.list.map(function (x) { return '+' + x.num; }).join(',') + '?body=' + encodeURIComponent(generic());
     }
     var log = function (channel, n) {
@@ -1942,58 +2084,79 @@
   }
 
   /* ---------- offline and sync ---------- */
-  function viewSync(el) {
+  function when(iso) { return new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); }
+  function viewSync(el, args) {
     var pk = me ? Api.store.get(ckey('pack')) : null, items = Sync.items();
     var kids = pk ? Object.keys(pk.participants).reduce(function (a, k) { return a + pk.participants[k].length; }, 0) : 0;
-    el.innerHTML = '<a href="#/more" class="small">‹ More</a><h1>Offline and sync</h1>' +
+    el.innerHTML = '<a href="#/more" class="small back-more">‹ More</a><h1>Offline and sync</h1>' +
       '<div class="card"><p><strong>' + (navigator.onLine ? 'Online' : 'No connection') + '</strong></p>' +
-        '<p class="small muted">' + (items.length ? plural(items.length, 'save') + ' on this phone not sent yet.' : 'Everything is sent.') + '</p>' +
+        '<p class="small muted">' + (items.length ? plural(items.length, 'save') + ' on this phone not sent yet.' + (navigator.onLine ? '' : ' They are sent by themselves when the phone is online.') : 'Everything is sent.') + '</p>' +
         (items.length && navigator.onLine ? '<button type="button" class="btn block" id="send-now">Send now</button>' : '') + '</div>' +
       (items.length ? '<div class="list">' + items.map(function (x) {
-        return '<div class="row static"><span class="grow"><span class="name">' + h(x.label) + '</span><br><span class="sub">Saved ' + h(new Date(x.at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })) + '</span>' +
+        return '<div class="row static"><span class="grow"><span class="name">' + h(x.label) + '</span><br><span class="sub">Saved ' + h(when(x.at)) + '</span>' +
           (x.state === 'failed' ? '<br><span class="badge bad">Not accepted</span><br><span class="small">' + h(x.error) + '</span>' : '<br><span class="badge warn">Waiting</span>') + '</span>' +
-          (x.state === 'failed' ? '<span class="stack"><button type="button" class="btn quiet mini" data-retry="' + h(x.id) + '">Try again</button> <button type="button" class="btn danger mini" data-drop="' + h(x.id) + '">Remove</button></span>' : '') + '</div>';
+          (x.state === 'failed' ? '<span class="stack"><button type="button" class="btn quiet mini" data-retry="' + h(x.id) + '">Send again</button> <button type="button" class="btn danger mini" data-drop="' + h(x.id) + '">Remove</button></span>' : '') + '</div>';
       }).join('') + '</div>' : '') +
-      '<section class="card"><h2>Downloaded to this phone</h2>' +
-        (!onOwnPhone() ? '<p class="small">This is a borrowed phone, so nothing is downloaded. Attendance needs internet here, or waits on the phone until the app is online.</p>'
-          : !canWorkOffline() ? '<p class="small muted">Your role does not record attendance, so nothing needs downloading.</p>'
-          : '<p class="small">' + (pk ? plural(kids, 'child', 'children') + ', ' + plural(Object.keys(pk.sessions).length, 'open report') + ' and the follow-up list, downloaded ' +
-              h(new Date(pk.at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })) + '.' : 'Not downloaded yet.') + '</p>' +
-            '<p class="small muted">It refreshes by itself when the app is open with internet. With no signal you can still take attendance and log follow-ups; they are sent later.</p>' +
-            (navigator.onLine ? '<button type="button" class="btn ghost block" id="pack-now">Download now</button>' : '')) + '</section>';
+      '<section class="card"><h2>On this phone</h2>' +
+        (!onOwnPhone() ? '<p class="small">This is a borrowed phone, so nothing is kept on it. Attendance needs internet here, or waits only until the app is closed.</p>'
+          : !canWorkOffline() ? '<p class="small muted">Your role does not take attendance, so nothing needs to be kept on this phone.</p>'
+          : '<p class="small">' + (pk ? plural(kids, 'child', 'children') + ', ' + plural(Object.keys(pk.sessions).length, 'open report') + ' and the follow-up list. Updated ' + h(when(pk.at)) + '.'
+              : 'Not downloaded yet. It happens by itself the next time the app is open with internet.') + '</p>' +
+            '<p class="small muted">Kept up to date by itself whenever the app is open with internet, so attendance and follow-up work with no signal.</p>') + '</section>' +
+      (me.can.export_data ? '<section class="card" id="excel">' + excelFormHtml() + '</section>' : '');
     var sn = $('#send-now', el); if (sn) sn.onclick = function () { busy(true); Sync.flush().then(function () { busy(false); viewSync(el); }); };
-    var pn = $('#pack-now', el); if (pn) pn.onclick = function () { busy(true); downloadPack(true).then(function (x) { busy(false); toast(x ? 'Downloaded' : 'Could not download. Try again.', !x); viewSync(el); }); };
     $all('[data-retry]', el).forEach(function (b) { b.onclick = function () { Sync.retry(b.dataset.retry).then(function () { viewSync(el); }); }; });
     $all('[data-drop]', el).forEach(function (b) {
       b.onclick = function () { if (confirm('Remove this save from the phone? It will not be sent.')) { Sync.remove(b.dataset.drop); viewSync(el); } };
     });
+    if (me.can.export_data) wireExcelForm($('#excel', el));
+    if (args && args[0] === 'excel') setTimeout(function () { var x = $('#excel', el); if (x) x.scrollIntoView({ block: 'start' }); }, 50);
+    if (onOwnPhone() && navigator.onLine) downloadPack(false).then(function (x) {   // automatic, at most every 10 minutes
+      if (x && (!pk || x.at !== pk.at) && el.isConnected && route().page === 'sync') viewSync(el);
+    });
   }
 
-  /* ---------- download data (CSV) ---------- */
-  function exportSheet() {
+  /* ---------- download to Excel ---------- */
+  var XL_KINDS = [['children', 'Children', 'Names, guardians, phones, consent'], ['meetings', 'Meeting reports', 'One row per center and meeting: present, new, decisions'],
+    ['attendance', 'Attendance', 'Who was present at each meeting'], ['decisions', 'Decisions', 'Who made which decision'], ['followups', 'Follow-up log', 'Calls, visits and outcomes']];
+  function excelFormHtml() {
     var cs = me.centers.filter(function (c) { return c.status === 'active'; });
-    sheet('Download data',
-      '<p class="small muted">A CSV file opens in Excel or Google Sheets. It holds children\'s personal details: keep it safe and delete it when done.</p>' +
-      '<label class="field">What<select name="what"><option value="children">Children (names, guardians, consent)</option><option value="attendance">Attendance per meeting</option>' +
-        '<option value="decisions">Decisions</option><option value="followups">Follow-up log</option></select></label>' +
-      (cs.length > 1 ? '<label class="field">Center<select name="center"><option value="">All my centers</option>' + cs.map(function (c) { return '<option value="' + h(c.center_id) + '">' + h(centerLabel(c)) + '</option>'; }).join('') + '</select></label>' : ''),
-      'Download', function (form) {
-        var f = form.elements;
-        return Api.call('exportData', { what: f.what.value, center_id: f.center ? f.center.value || undefined : undefined }).then(function (r) {
-          var url = URL.createObjectURL(new Blob([r.csv], { type: 'text/csv;charset=utf-8' }));
-          var a = document.createElement('a'); a.href = url; a.download = r.filename; document.body.appendChild(a); a.click(); a.remove();
-          setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
-          toast(plural(r.rows, 'row') + ' downloaded');
-        });
-      });
+    return '<h2>Download to Excel</h2><p class="small muted">Choose what to download. Each choice becomes a sheet in one Excel file.</p>' +
+      '<form id="xl-form" novalidate><fieldset class="checks">' + XL_KINDS.map(function (k, i) {
+        return '<label class="check"><input type="checkbox" name="what" value="' + k[0] + '"' + (i === 0 ? ' checked' : '') + '><span><strong>' + k[1] + '</strong><br><span class="small muted">' + k[2] + '</span></span></label>';
+      }).join('') + '</fieldset>' +
+      (cs.length > 1 ? '<label class="field">Center<select name="center"><option value="">All my centers</option>' + cs.map(function (c) { return '<option value="' + h(c.center_id) + '">' + h(centerLabel(c)) + '</option>'; }).join('') + '</select></label>' : '') +
+      '<label class="field">Period<span class="hint">Applies to meetings, attendance, decisions and follow-ups. Children are always the full list.</span><select name="period">' +
+        '<option value="all">Everything</option><option value="month">This month</option><option value="3m">Last 3 months</option><option value="year">This year</option><option value="custom">Choose dates</option></select></label>' +
+      '<div class="two" id="xl-dates" hidden><label class="field">From<input type="date" name="from"></label><label class="field">To<input type="date" name="to"></label></div>' +
+      '<p class="small muted">The file holds children\'s personal details. Keep it safe, do not forward it, and delete it when you are done.</p>' +
+      '<div class="error" role="alert"></div>' +
+      '<button type="submit" class="btn block" id="xl-go">' + ICON.excel + ' Download Excel file</button></form>';
   }
-
-  /* ---------- install ---------- */
-  function installRow() {
-    if (window.matchMedia && matchMedia('(display-mode: standalone)').matches) return '';
-    if (window.__installPrompt) return '<button type="button" class="row" id="install"><span class="grow"><span class="name">Install the app</span><br><span class="sub">Opens from your home screen like any other app</span></span></button>';
-    if (/iPhone|iPad/.test(navigator.userAgent)) return '<div class="row static"><span class="grow"><span class="name">Install on iPhone</span><br><span class="sub">In Safari tap Share, then "Add to Home Screen"</span></span></div>';
-    return '';
+  function periodDates(v) {
+    var t = me.today || new Date().toISOString().slice(0, 10), d = new Date(t + 'T12:00:00Z');
+    if (v === 'month') return { from: t.slice(0, 8) + '01', to: t };
+    if (v === '3m') { d.setUTCMonth(d.getUTCMonth() - 3); return { from: d.toISOString().slice(0, 10), to: t }; }
+    if (v === 'year') return { from: t.slice(0, 4) + '-01-01', to: t };
+    return {};
+  }
+  function wireExcelForm(box) {
+    var form = $('#xl-form', box), f = form.elements, err = $('.error', form);
+    f.period.onchange = function () { $('#xl-dates', form).hidden = f.period.value !== 'custom'; };
+    form.addEventListener('submit', function (ev) {
+      ev.preventDefault(); err.textContent = '';
+      var what = $all('[name=what]:checked', form).map(function (i) { return i.value; });
+      if (!what.length) { err.textContent = 'Tick at least one thing to download.'; return; }
+      if (!navigator.onLine) { err.textContent = 'Downloading needs internet. Try again when you are online.'; return; }
+      var pd = f.period.value === 'custom' ? { from: f.from.value, to: f.to.value } : periodDates(f.period.value);
+      var btn = $('#xl-go', form); btn.disabled = true;
+      Api.call('exportData', { what: what, center_id: f.center ? f.center.value || undefined : undefined, from: pd.from || undefined, to: pd.to || undefined }).then(function (r) {
+        var url = URL.createObjectURL(window.Xlsx.build(r.sheets));
+        var a = document.createElement('a'); a.href = url; a.download = r.filename; document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+        toast('Excel file downloaded: ' + plural(r.rows, 'row'));
+      }).catch(function (e) { err.textContent = e.message; }).then(function () { btn.disabled = false; });
+    });
   }
 
   /* ---------- more ---------- */
@@ -2003,10 +2166,9 @@
         h(ROLE[me.user.role]) + (me.user.email ? ' · ' + h(me.user.email) : me.user.phone ? ' · ' + h(me.user.phone) : '') + '</span></span></button></div>' +
       '<h3>Work</h3><div class="list">' +
         '<a class="row" href="#/tasks"><span class="grow"><span class="name">Tasks</span><br><span class="sub">' + (me.can.assign_tasks ? 'Hand a report, follow-up or children to someone in your team' : 'Jobs handed to you') + '</span></span></a>' +
-        '<a class="row" href="#/reports"><span class="grow"><span class="name">Combined report</span><br><span class="sub">For a meeting or a month: WhatsApp version and print</span></span></a>' +
-        '<a class="row" href="#/sync"><span class="grow"><span class="name">Offline and sync</span><br><span class="sub">' + (Sync.waiting() + Sync.failed() ? (Sync.waiting() + Sync.failed()) + ' not sent yet' : 'What is on this phone') + '</span></span></a>' +
-        (me.can.record ? '<button type="button" class="row" id="export"><span class="grow"><span class="name">Download data (CSV)</span><br><span class="sub">Children, attendance, decisions, follow-ups</span></span></button>' : '') +
-        installRow() +
+        (me.can.reports ? '<a class="row" href="#/reports"><span class="grow"><span class="name">Combined report</span><br><span class="sub">For a meeting or a month: WhatsApp version and print</span></span></a>' : '') +
+        '<a class="row" href="#/sync"><span class="grow"><span class="name">Offline and sync</span><br><span class="sub">' + (Sync.waiting() + Sync.failed() ? (Sync.waiting() + Sync.failed()) + ' not sent yet' : 'What is kept on this phone') + '</span></span></a>' +
+        (me.can.export_data ? '<a class="row" href="#/sync/excel"><span class="grow"><span class="name">Download to Excel</span><br><span class="sub">Children, reports, attendance, decisions, follow-ups</span></span></a>' : '') +
         (me.can.remind ? '<a class="row" href="#/reminders"><span class="grow"><span class="name">Reminders</span><br><span class="sub">Report reminders by email, WhatsApp or SMS</span></span></a>' : '') +
         (me.can.record ? '<a class="row" href="#/stats"><span class="grow"><span class="name">Statistics</span><br><span class="sub">Attendance, decisions, centers compared</span></span></a>' : '') +
         (me.can.manage_users || me.user.role === 'ASSISTANT' ? '<a class="row" href="#/people"><span class="grow"><span class="name">Team</span><br><span class="sub">' + (me.can.manage_users ? 'Add people, reset PINs, switch access' : 'The people of your center') + '</span></span></a>' : '') +
@@ -2016,12 +2178,13 @@
       (me.can.settings ? '<h3>Super Admin</h3><div class="list">' +
         '<button type="button" class="row" id="settings"><span class="grow"><span class="name">System settings</span><br><span class="sub">Name, sign-in, reminders</span></span></button>' +
         '<button type="button" class="row" id="shares"><span class="grow"><span class="name">Sharing between programs</span><br><span class="sub">Let one program see another\'s figures</span></span></button></div>' : '') +
+      installHtml(true) +
+      '<button type="button" class="btn quiet block" id="tour-again">' + ICON.help + ' Show the tips again</button>' +
       '<button class="btn danger block" id="out">Sign out</button>' +
-      '<p class="small muted center">Outreach Tracker, version 7</p>';
+      '<p class="small muted center">Outreach Tracker, version 8</p>';
     $('#my').onclick = myDetailsForm;
-    var ex = $('#export', el); if (ex) ex.onclick = exportSheet;
-    var ins = $('#install', el);
-    if (ins) ins.onclick = function () { var p = window.__installPrompt; window.__installPrompt = null; p.prompt(); p.userChoice.then(function () { render(); }); };
+    wireInstall(el);
+    $('#tour-again', el).onclick = function () { tourReset(); toast('The tips will show again on each screen.'); go('#/home'); };
     $('#out').onclick = signOut;
     if (me.can.settings) { $('#settings').onclick = settingsForm; $('#shares').onclick = sharesForm; }
   }
@@ -2073,6 +2236,193 @@
         });
     }).catch(fail);
   }
+
+  /* ---------- help and tips ---------- */
+  /*
+   * HELP[page](role facts) gives { title, steps: [...], tour: [[selector, text], ...] }.
+   * The steps show when the ? is tapped; the tour points at the screen's buttons the first time the screen opens.
+   */
+  function roleFacts() {
+    var r = me.user.role;
+    return { admin: r === 'SUPER_ADMIN', coord: r === 'COORDINATOR', leader: r === 'LEADER', asst: r === 'ASSISTANT', viewer: r === 'VIEWER',
+      record: me.can.record, manage: r === 'SUPER_ADMIN' || r === 'COORDINATOR', jobs: (me.jobs || []).length > 0 };
+  }
+  var HELP = {
+    home: function (x) {
+      return { title: 'Home', steps: [
+        'The cards show this month at a glance. Tap a card to see more.',
+        x.jobs ? 'Under "Handed to you" are jobs someone gave you. Tap the green button to do the job.' : null,
+        x.record ? 'To take attendance, tap Meetings at the bottom, then your center.' : null,
+        x.manage ? 'Under the latest meeting you see which centers have not submitted, and can remind them.' : null,
+        'The bell at the top shows new jobs, comments and finished reports.',
+        'Tap ? on any screen for help with that screen.'],
+        tour: [['.stats-cards', 'This month at a glance: who came, first-timers, decisions and who was absent. Tap a card to see more.'],
+          ['.tabs', 'Move between the parts of the app here.'],
+          ['.bell', 'New jobs, comments and finished reports show here.'],
+          ['.help-btn', 'Tap ? on any screen for the steps of that screen.']] };
+    },
+    meetings: function (x) {
+      return { title: 'Meetings', steps: x.manage ? [
+        'Tap "+ New meeting" to create the next meeting: one date, theme and scripture for every center.',
+        'Each meeting shows which centers have submitted.',
+        'Tap a center to see or correct its report.',
+        'When all reports are in, open the meeting and tap "Close the meeting". Leaders can then no longer change their report.'] : [
+        'Your coordinator creates each meeting.',
+        x.record ? 'Tap your center under the meeting to take attendance.' : 'You see which centers have reported.',
+        x.record ? 'You can correct your report until the coordinator closes the meeting.' : null],
+        tour: [['#add-meeting', 'Create the next meeting here. Every center reports on it.'],
+          ['.meeting .row', x.record ? 'Tap your center to take attendance for this meeting.' : 'Each center and whether it has reported.']] };
+    },
+    take: function () {
+      return { title: 'Taking attendance', steps: [
+        'Tap a child to mark him present. Tap again to undo.',
+        'For a present child, tap "Decision" if he made one. "Another kind of decision" adds a new kind for this report.',
+        'A first-timer: tap "+ First-timer" and fill in his details and the guardian\'s consent.',
+        'Fill in facilitators, start time and whether you started on time.',
+        '"Save draft" keeps your work. "Submit report" sends it to the coordinator.',
+        'No signal? It is saved on the phone and sent by itself when you are online.'],
+        tour: [['.att-row', 'Tap a child to mark him present. Tap "Decision" if he made one.'],
+          ['#add-new', 'Add a child who came for the first time, with the guardian\'s consent.'],
+          ['.savebar', 'Save a draft, or submit the report when you are done.']] };
+    },
+    followup: function () {
+      return { title: 'Follow-up', steps: [
+        'The list shows the children to contact: absent, missed several meetings, first-timers, decisions and birthdays.',
+        'Tap Call, WhatsApp or SMS next to the child\'s or the guardian\'s number. The message is filled in for you and you can change it.',
+        'After the contact, tap "Log" and write what happened. The child then leaves the list.',
+        'Set a next action with a date and the child comes back on that date.'],
+        tour: [['.chips', 'Show one group at a time: absent, missed in a row, first-timers, decisions.'],
+          ['#flist .row', 'Tap a child to call, WhatsApp or SMS him or his guardian, then log what happened. He then leaves the list.']] };
+    },
+    participants: function (x) {
+      return { title: 'Children', steps: [
+        'Tap "+ Add child" to add a child, with the guardian\'s name, phone and consent.',
+        '"Message all" sends one message to every child, every guardian, or both, from your phone.',
+        'Tap a child to see his attendance, decisions and contacts, or to edit him.',
+        '"To complete" lists children without full details or the guardian\'s consent.',
+        x.record ? 'Import CSV adds many children at once from a spreadsheet.' : null],
+        tour: [['#msg-all', 'Send one message to all the children, their guardians, or both.'], ['#add-p', 'Add a new child here.']] };
+    },
+    stats: function () {
+      return { title: 'Statistics', steps: ['Choose 3, 6 or 12 months and a program or center at the top.', 'Tap a bar in a chart for its numbers, or switch to the table.',
+        'The faithful and at-risk lists help you plan follow-up.'] };
+    },
+    reports: function (x) {
+      return { title: 'Combined report', steps: [
+        'Choose one meeting or a whole month.',
+        x.manage ? 'Read the conclusion the app drafted, change it, and tap "Save conclusion".' : 'The conclusion is written by the coordinator.',
+        '"Copy WhatsApp version" gives a short text to paste in a group.',
+        '"Print or save as PDF" gives a clean page. In the print window choose "Save as PDF".'],
+        tour: [['#wa', 'A short version to paste in WhatsApp.'], ['#print', 'Print it, or save it as a PDF.']] };
+    },
+    tasks: function (x) {
+      return { title: 'Tasks', steps: x.manage || x.leader ? [
+        'A task hands one job to one person: submitting a report, the follow-up, or the children of a center.',
+        'Tap "+ Hand over a job", choose the job, the center and the person.',
+        'The person can do that job in the app until it is done or you cancel it.',
+        '"Handed out by me" shows what you gave and lets you comment or cancel.'] : [
+        'Jobs handed to you are listed here and on Home. Tap one to do it.', 'Mark a follow-up or children job done when you finish.'],
+        tour: [['#add-task', 'Hand a report, the follow-up or the children of a center to someone in your team.']] };
+    },
+    reminders: function () {
+      return { title: 'Reminders', steps: ['Choose the meeting. The centers that have not submitted are ticked.', 'Choose Email, WhatsApp or SMS.',
+        'Email goes at once. WhatsApp and SMS open one by one: send, come back, tap "Sent".', 'Reminders never contain children\'s names.'] };
+    },
+    people: function () {
+      return { title: 'Team', steps: ['Tap "+ Add person" and choose the role and center.',
+        'Give a Google email, or tick "phone number + PIN" and send the setup code by WhatsApp.',
+        'Tap a person to edit, reset the PIN (new setup code) or switch access off.'],
+        tour: [['#add-user', 'Add a leader, assistant or viewer. Phone users get a setup code to send them.']] };
+    },
+    templates: function () { return { title: 'Message templates', steps: ['These texts fill the WhatsApp and SMS buttons in Follow-up.', '{name} becomes the person messaged, {child} the child.'] }; },
+    centers: function () { return { title: 'Programs and centers', steps: ['Add a center to a program with "+ Center".', 'Switch a center off instead of deleting it, so its history stays.'] }; },
+    sync: function (x) {
+      return { title: 'Offline and sync', steps: [
+        'With no signal, attendance and follow-up are saved on the phone and sent by themselves when you are online.',
+        'Saves still waiting are listed here. A save the server did not accept shows why: correct it and tap "Send again", or remove it.',
+        'On your own phone the children list is kept up to date by itself.',
+        me.can.export_data ? 'Download to Excel: tick what you want, choose the center and the period, then tap "Download Excel file".' : null],
+        tour: [['#excel', 'Download to Excel: tick what you need, choose a period, and get one file with a sheet for each.']] };
+    },
+    more: function () { return { title: 'More', steps: ['Your details, other screens, install the app, and sign out.', '"Show the tips again" replays the tips on every screen.'] }; },
+    notifications: function () { return { title: 'Notifications', steps: ['New jobs, comments and finished reports. Tap one to open it.'] }; }
+  };
+  function helpFor(page) { var f = HELP[page]; return f ? f(roleFacts()) : null; }
+  function showHelp(page) {
+    var hp = helpFor(page) || { title: 'Help', steps: ['Tap the parts at the bottom to move around the app.'] };
+    var steps = hp.steps.filter(Boolean);
+    var d = sheet('Help: ' + hp.title, '<ol class="steps">' + steps.map(function (t) { return '<li>' + h(t) + '</li>'; }).join('') + '</ol>' +
+      (hp.tour && visibleStops(hp.tour).length ? '<button type="button" class="btn ghost block" id="tour-now" style="margin-top:12px">Show me on the screen</button>' : '') +
+      '<p class="small muted" style="margin-top:12px">Still stuck? Ask your ' + (me.user.role === 'COORDINATOR' || me.user.role === 'SUPER_ADMIN' ? 'Super Admin' : 'coordinator') + '.</p>');
+    var t = $('#tour-now', d); if (t) t.onclick = function () { d.close(); runTour(page, hp.tour); };
+  }
+
+  /* The tour: a spotlight on one part of the screen with a short note, Next / Back / Skip. */
+  var TOUR_KEY = 'ot.tips';
+  function tourSeen() { try { return JSON.parse(localStorage.getItem(TOUR_KEY) || '{}'); } catch (e) { return {}; } }
+  function tourMark(page) { try { var x = tourSeen(); x[me.user.user_id + '|' + page] = 1; localStorage.setItem(TOUR_KEY, JSON.stringify(x)); } catch (e) { /* ignore */ } }
+  function tourOff() { try { var x = tourSeen(); x[me.user.user_id + '|off'] = 1; localStorage.setItem(TOUR_KEY, JSON.stringify(x)); } catch (e) { /* ignore */ } }
+  function tourReset() {
+    try { var x = tourSeen(), pre = me.user.user_id + '|'; Object.keys(x).forEach(function (k) { if (k.indexOf(pre) === 0) delete x[k]; }); localStorage.setItem(TOUR_KEY, JSON.stringify(x)); } catch (e) { /* ignore */ }
+  }
+  function firstVisible(sel) {
+    return $all(sel).filter(function (e) { var r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0 && !e.closest('[hidden]'); })[0] || null;
+  }
+  function visibleStops(tour) { return (tour || []).map(function (t) { return { el: firstVisible(t[0]), text: t[1] }; }).filter(function (t) { return t.el; }); }
+  var tourTimer = null;
+  function maybeTour(page) {
+    clearTimeout(tourTimer);
+    if (!me || $('.tour')) return;
+    var seen = tourSeen(), uid = me.user.user_id;
+    if (seen[uid + '|off'] || seen[uid + '|' + page] || seen['all|off']) return;
+    var hp = helpFor(page); if (!hp || !hp.tour) return;
+    tourTimer = setTimeout(function () {   // after the screen has its data
+      if (route().page !== page || document.querySelector('dialog[open]') || $('.tour')) return;
+      if (visibleStops(hp.tour).length) runTour(page, hp.tour);
+    }, 900);
+  }
+  function runTour(page, tour) {
+    var stops = visibleStops(tour); if (!stops.length) return;
+    var i = 0, ov = document.createElement('div');
+    ov.className = 'tour'; ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-modal', 'true'); ov.setAttribute('aria-label', 'Tips');
+    ov.innerHTML = '<div class="tour-hole"></div><div class="tour-tip"><p class="tour-n"></p><p class="tour-t"></p>' +
+      '<div class="tour-b"><button type="button" class="linkbtn" data-t="skip">Skip tips</button><span class="grow"></span>' +
+      '<button type="button" class="btn quiet mini" data-t="back">Back</button><button type="button" class="btn mini" data-t="next">Next</button></div></div>';
+    document.body.appendChild(ov);
+    var hole = $('.tour-hole', ov), tip = $('.tour-tip', ov);
+    function place() {
+      var st = stops[i], r = st.el.getBoundingClientRect(), pad = 6;
+      hole.style.left = (r.left - pad) + 'px'; hole.style.top = (r.top - pad) + 'px';
+      hole.style.width = (r.width + pad * 2) + 'px'; hole.style.height = Math.min(r.height + pad * 2, innerHeight - 20) + 'px';
+      var tw = Math.min(340, innerWidth - 24); tip.style.width = tw + 'px';
+      tip.style.left = Math.max(12, Math.min(innerWidth - tw - 12, r.left + r.width / 2 - tw / 2)) + 'px';
+      var below = r.bottom + 14, th = tip.offsetHeight || 140;
+      tip.style.top = (below + th < innerHeight - 8 ? below : Math.max(8, r.top - th - 14)) + 'px';
+    }
+    function show() {
+      var st = stops[i];
+      $('.tour-n', ov).textContent = (i + 1) + ' of ' + stops.length;
+      $('.tour-t', ov).textContent = st.text;
+      $('[data-t=back]', ov).hidden = i === 0;
+      $('[data-t=next]', ov).textContent = i === stops.length - 1 ? 'Got it' : 'Next';
+      var r = st.el.getBoundingClientRect();
+      if (r.top < 70 || r.bottom > innerHeight - 80) { st.el.scrollIntoView({ block: 'center' }); }
+      requestAnimationFrame(place);
+      $('[data-t=next]', ov).focus();
+    }
+    function end(off) { ov.remove(); window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true); tourMark(page); if (off) tourOff(); }
+    ov.addEventListener('click', function (ev) {
+      var b = ev.target.closest('[data-t]'); if (!b) return;
+      if (b.dataset.t === 'skip') return end(true);
+      if (b.dataset.t === 'back') { i = Math.max(0, i - 1); return show(); }
+      if (i === stops.length - 1) return end(false);
+      i++; show();
+    });
+    ov.addEventListener('keydown', function (ev) { if (ev.key === 'Escape') end(false); });
+    window.addEventListener('resize', place); window.addEventListener('scroll', place, true);
+    show();
+  }
+  window.addEventListener('hashchange', function () { var t = $('.tour'); if (t) t.remove(); });
 
   /* ---------- start ---------- */
   function start() {

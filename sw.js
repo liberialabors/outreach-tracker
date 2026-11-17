@@ -1,7 +1,7 @@
 /* Outreach Tracker service worker: keeps the app's own files on the phone so it opens at once.
    Only this folder's files are kept. Data always comes from the server; nothing about children is stored here. */
-var VERSION = 'outreach-tracker-7.0.0';
-var FILES = ['./', 'index.html', 'config.js', 'css/app.css', 'js/api.js', 'js/auth.js', 'js/sync.js', 'js/app.js',
+var VERSION = 'outreach-tracker-8.0.0';
+var FILES = ['./', 'index.html', 'config.js', 'css/app.css', 'js/api.js', 'js/auth.js', 'js/sync.js', 'js/xlsx.js', 'js/app.js',
   'fonts/lexend.woff2', 'img/logo-96.png', 'img/logo-256.png', 'icons/favicon-48.png', 'manifest.webmanifest', 'participants-template.csv'];
 
 self.addEventListener('install', function (e) {
