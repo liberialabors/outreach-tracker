@@ -10,7 +10,7 @@
   var me = null;            // answer of the `me` call: user, scope, programs, centers, permissions
   var users = [];
 
-  var ROLE = { SUPER_ADMIN: 'Super Admin', COORDINATOR: 'Coordinator', LEADER: 'Center Leader', ASSISTANT: 'Assistant', VIEWER: 'Viewer' };
+  var ROLE = { SUPER_ADMIN: 'Super Admin', ADMIN: 'Admin', COORDINATOR: 'Coordinator', LEADER: 'Center Leader', ASSISTANT: 'Assistant', VIEWER: 'Viewer' };
   var ICON = {
     home: '<svg viewBox="0 0 24 24"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>',
     people: '<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><path d="M16 4.8a3.5 3.5 0 010 6.4M18.5 14.8c1.7.8 2.7 2.5 3 5.2"/></svg>',
@@ -260,7 +260,7 @@
       ['reports', 'Combined report', me.can.reports],
       ['stats', 'Statistics', true],
       ['reminders', 'Reminders', me.can.remind],
-      ['sync', 'Offline and sync', true],
+      ['sync', 'Sync and download file', true],
       ['people', 'Team', me.can.manage_users || me.user.role === 'ASSISTANT'],
       ['templates', 'Message templates', me.can.record || jobsOf('followup').length > 0],
       ['centers', 'Centers', me.can.manage_centers]
@@ -522,7 +522,7 @@
     paint(el, 'users', function () { return Api.call('listUsers'); }, function (list) {
       users = list.sort(function (a, b) { return ROLE_ORDER.indexOf(a.role) - ROLE_ORDER.indexOf(b.role) || a.name.localeCompare(b.name); });
       el.innerHTML = '<a href="#/more" class="small">‹ More</a><div class="head"><h1>Team</h1></div>' +
-        '<p class="muted small">' + (me.can.manage_users ? 'People who can sign in. Tap a name to edit, reset a PIN or switch access off.' : 'The team of your center.') + '</p>' +
+        '<p class="muted small">' + (me.can.manage_users ? 'Tap a name to see the person. You can change only the people you manage; others at your level are shown read-only.' : 'Your center\'s team, and others at your level. Tap a name to call or WhatsApp.') + '</p>' +
         '<div class="list">' + (users.length ? users.map(userRow).join('') : '<div class="empty">Nobody here yet.</div>') + '</div>' +
         (me.can.manage_users ? '<button class="btn fab" id="add-user">+ Add person</button>' : '');
       $all('.row[data-id]', el).forEach(function (r) {
@@ -531,15 +531,18 @@
       if (me.can.manage_users) $('#add-user').onclick = function () { userForm(null); };
     });
   }
-  var ROLE_ORDER = ['SUPER_ADMIN', 'COORDINATOR', 'LEADER', 'ASSISTANT', 'VIEWER'];
+  var ROLE_ORDER = ['SUPER_ADMIN', 'ADMIN', 'COORDINATOR', 'LEADER', 'ASSISTANT', 'VIEWER'];
   function userScopeText(u) {
-    var parts = u.center_ids.map(centerName).filter(String);
-    if (u.role === 'COORDINATOR' || u.role === 'VIEWER') parts = u.program_ids.map(function (p) { return programName(p) ? 'All of ' + programName(p) : ''; }).filter(String).concat(parts);
+    var parts = u.center_ids.map(function (c, i) { return centerName(c) || (u.center_names || [])[i] || ''; }).filter(String);
+    if (u.role === 'COORDINATOR' || u.role === 'VIEWER') parts = u.program_ids.map(function (p, i) {
+      var n = programName(p) || (u.program_names || [])[i]; return n ? 'All of ' + n : '';
+    }).filter(String).concat(parts);
     if (u.role === 'SUPER_ADMIN') parts = ['Everything'];
+    if (u.role === 'ADMIN') parts = ['All programs'];
     return parts.join(', ');
   }
   function userRow(u) {
-    var isMe = u.user_id === me.user.user_id, tappable = u.can_manage || isMe;
+    var isMe = u.user_id === me.user.user_id, tappable = true;   // peers open read-only
     return '<' + (tappable ? 'button type="button"' : 'div') + ' class="row' + (tappable ? '' : ' static') + '"' + (tappable ? ' data-id="' + h(u.user_id) + '"' : '') + '>' +
       '<span class="avatar">' + h(initials(u.name)) + '</span><span class="grow"><span class="name">' + h(u.name) + (isMe ? ' (you)' : '') + '</span>' +
       '<span class="sub"><br>' + h(ROLE[u.role]) + (userScopeText(u) ? ' · ' + h(userScopeText(u)) : '') + '</span><br>' +
@@ -552,6 +555,15 @@
 
   function userActions(u) {
     if (u.user_id === me.user.user_id) { myDetailsForm(); return; }
+    if (!u.can_manage) {
+      var ph = waNumber(u.phone);
+      sheet(u.name, '<p class="muted">' + h(ROLE[u.role]) + (userScopeText(u) ? ' · ' + h(userScopeText(u)) : '') + '</p>' +
+        (u.phone ? '<p class="small muted">' + h(u.phone) + '</p><div class="actions" style="margin-top:12px"><a class="btn quiet" href="tel:' + h(u.phone.replace(/[^\d+]/g, '')) + '">Call</a>' +
+          (ph ? '<a class="btn quiet" href="https://wa.me/' + ph + '" target="_blank" rel="noopener">WhatsApp</a>' : '') + '</div>' : '') +
+        '<p class="small muted" style="margin-top:14px">' + (u.role === me.user.role ? 'Same level as you: you can see, not change, this person. ' : '') +
+        'Only ' + (u.role === 'ADMIN' || u.role === 'SUPER_ADMIN' ? 'a Super Admin' : u.role === 'COORDINATOR' ? 'an Admin or Super Admin' : 'their manager') + ' can change these details.</p>');
+      return;
+    }
     var d = sheet(u.name, '<p class="muted">' + h(ROLE[u.role]) + (userScopeText(u) ? ' · ' + h(userScopeText(u)) : '') + '</p>' +
       (u.phone ? '<p class="small muted">' + h(u.phone) + '</p>' : '') + (u.email ? '<p class="small muted">' + h(u.email) + '</p>' : '') +
       '<div class="stack" style="margin-top:16px">' +
@@ -594,7 +606,7 @@
   function userForm(u) {
     var roles = me.assignable_roles, centers = me.centers.filter(function (c) { return c.status === 'active' || (u && u.center_ids.indexOf(c.center_id) !== -1); });
     var fullPrograms = me.programs.filter(function (p) { return me.scope.full_program_ids.indexOf(p.program_id) !== -1; });
-    var v = u || { name: '', email: '', phone: '', role: roles[roles.length > 1 && roles[0] === 'SUPER_ADMIN' ? 2 : 0], center_ids: [], program_ids: [], allow_pin: false };
+    var v = u || { name: '', email: '', phone: '', role: roles.indexOf('LEADER') !== -1 ? 'LEADER' : roles[0], center_ids: [], program_ids: [], allow_pin: false };
     var body =
       '<label class="field">Full name<input type="text" name="name" value="' + h(v.name) + '" autocomplete="off" required></label>' +
       '<label class="field">Role<select name="role">' + roles.map(function (r) { return '<option value="' + r + '"' + (r === v.role ? ' selected' : '') + '>' + ROLE[r] + '</option>'; }).join('') + '</select></label>' +
@@ -705,7 +717,7 @@
     return isNaN(x) ? d : x.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
   }
   function meetingCard(m, compact) {
-    var canTake = me.can.record && (m.status !== 'closed' || me.user.role === 'SUPER_ADMIN' || me.user.role === 'COORDINATOR');
+    var canTake = me.can.record && (m.status !== 'closed' || ['SUPER_ADMIN', 'ADMIN', 'COORDINATOR'].indexOf(me.user.role) !== -1);
     return '<div class="card meeting" data-meeting="' + h(m.meeting_id) + '">' +
       '<div class="head"><div><p class="small muted">' + h(fmtDate(m.date)) + (me.programs.length > 1 ? ' · ' + h(programName(m.program_id)) : '') + '</p>' +
       '<h2>' + h(m.theme) + '</h2>' + (m.scripture ? '<p class="small muted">' + h(m.scripture) + '</p>' : '') + '</div>' +
@@ -1042,8 +1054,8 @@
       '<label class="field">Full name<input type="text" name="name" value="' + h(v.name) + '" autocomplete="off" required></label>' +
       '<div class="two"><label class="field">Age<input type="text" name="age" inputmode="numeric" maxlength="2" value="' + h(v.age) + '" required></label>' +
       '<label class="field">Date of birth<span class="hint">Optional</span><input type="date" name="birth_date" value="' + h(v.birth_date) + '"></label></div>' +
-      '<label class="field">Guardian\'s name<input type="text" name="guardian_name" value="' + h(v.guardian_name) + '" autocomplete="off" required></label>' +
-      '<label class="field">Guardian\'s phone<input type="tel" name="guardian_phone" inputmode="tel" value="' + h(v.guardian_phone) + '" placeholder="0770 000 000" required></label>' +
+      '<label class="field">Guardian\'s name<span class="hint">Optional</span><input type="text" name="guardian_name" value="' + h(v.guardian_name) + '" autocomplete="off"></label>' +
+      '<label class="field">Guardian\'s phone<span class="hint">Optional</span><input type="tel" name="guardian_phone" inputmode="tel" value="' + h(v.guardian_phone) + '" placeholder="0770 000 000"></label>' +
       '<label class="field">Child\'s own phone<span class="hint">Optional</span><input type="tel" name="phone" inputmode="tel" value="' + h(v.phone) + '"></label>' +
       '<label class="field">School<span class="hint">Optional</span><input type="text" name="school" value="' + h(v.school) + '"></label>' +
       '<label class="check consent"><input type="checkbox" name="consent"' + (v.guardian_consent ? ' checked' : '') + '><span><strong>The guardian agrees</strong> that we keep these details to follow up with the child.' +
@@ -1055,8 +1067,8 @@
           phone: f.phone.value.trim(), school: f.school.value.trim(), guardian_consent: f.consent.checked };
         if (vals.name.length < 2) throw new Error('Enter the full name.');
         if (!/^\d{1,2}$/.test(vals.age)) throw new Error('Enter the age as a number, e.g. 12.');
-        if (!vals.guardian_name) throw new Error('Enter the guardian\'s name.');
-        if (vals.guardian_phone.replace(/\D/g, '').length < 7) throw new Error('Enter the guardian\'s phone number.');
+        var gd = vals.guardian_phone.replace(/\D/g, '').length;
+        if (gd && gd < 7) throw new Error('The guardian\'s phone number looks too short. Correct it or leave it empty.');
         if (firstTimer && !vals.guardian_consent) throw new Error('Tick the guardian consent to add a first-timer.');
         return onSave(vals);
       });
@@ -2088,7 +2100,7 @@
   function viewSync(el, args) {
     var pk = me ? Api.store.get(ckey('pack')) : null, items = Sync.items();
     var kids = pk ? Object.keys(pk.participants).reduce(function (a, k) { return a + pk.participants[k].length; }, 0) : 0;
-    el.innerHTML = '<a href="#/more" class="small back-more">‹ More</a><h1>Offline and sync</h1>' +
+    el.innerHTML = '<a href="#/more" class="small back-more">‹ More</a><h1>Sync and download file</h1>' +
       '<div class="card"><p><strong>' + (navigator.onLine ? 'Online' : 'No connection') + '</strong></p>' +
         '<p class="small muted">' + (items.length ? plural(items.length, 'save') + ' on this phone not sent yet.' + (navigator.onLine ? '' : ' They are sent by themselves when the phone is online.') : 'Everything is sent.') + '</p>' +
         (items.length && navigator.onLine ? '<button type="button" class="btn block" id="send-now">Send now</button>' : '') + '</div>' +
@@ -2121,7 +2133,7 @@
     ['attendance', 'Attendance', 'Who was present at each meeting'], ['decisions', 'Decisions', 'Who made which decision'], ['followups', 'Follow-up log', 'Calls, visits and outcomes']];
   function excelFormHtml() {
     var cs = me.centers.filter(function (c) { return c.status === 'active'; });
-    return '<h2>Download to Excel</h2><p class="small muted">Choose what to download. Each choice becomes a sheet in one Excel file.</p>' +
+    return '<h2>Download file</h2><p class="small muted">Your records as an Excel file. Tick what you need: each choice becomes a sheet in the file.</p>' +
       '<form id="xl-form" novalidate><fieldset class="checks">' + XL_KINDS.map(function (k, i) {
         return '<label class="check"><input type="checkbox" name="what" value="' + k[0] + '"' + (i === 0 ? ' checked' : '') + '><span><strong>' + k[1] + '</strong><br><span class="small muted">' + k[2] + '</span></span></label>';
       }).join('') + '</fieldset>' +
@@ -2167,8 +2179,7 @@
       '<h3>Work</h3><div class="list">' +
         '<a class="row" href="#/tasks"><span class="grow"><span class="name">Tasks</span><br><span class="sub">' + (me.can.assign_tasks ? 'Hand a report, follow-up or children to someone in your team' : 'Jobs handed to you') + '</span></span></a>' +
         (me.can.reports ? '<a class="row" href="#/reports"><span class="grow"><span class="name">Combined report</span><br><span class="sub">For a meeting or a month: WhatsApp version and print</span></span></a>' : '') +
-        '<a class="row" href="#/sync"><span class="grow"><span class="name">Offline and sync</span><br><span class="sub">' + (Sync.waiting() + Sync.failed() ? (Sync.waiting() + Sync.failed()) + ' not sent yet' : 'What is kept on this phone') + '</span></span></a>' +
-        (me.can.export_data ? '<a class="row" href="#/sync/excel"><span class="grow"><span class="name">Download to Excel</span><br><span class="sub">Children, reports, attendance, decisions, follow-ups</span></span></a>' : '') +
+        '<a class="row" href="#/sync"><span class="grow"><span class="name">Sync and download file</span><br><span class="sub">' + (Sync.waiting() + Sync.failed() ? (Sync.waiting() + Sync.failed()) + ' not sent yet' : 'Saves made offline') + (me.can.export_data ? ', and your records as an Excel file' : '') + '</span></span></a>' +
         (me.can.remind ? '<a class="row" href="#/reminders"><span class="grow"><span class="name">Reminders</span><br><span class="sub">Report reminders by email, WhatsApp or SMS</span></span></a>' : '') +
         (me.can.record ? '<a class="row" href="#/stats"><span class="grow"><span class="name">Statistics</span><br><span class="sub">Attendance, decisions, centers compared</span></span></a>' : '') +
         (me.can.manage_users || me.user.role === 'ASSISTANT' ? '<a class="row" href="#/people"><span class="grow"><span class="name">Team</span><br><span class="sub">' + (me.can.manage_users ? 'Add people, reset PINs, switch access' : 'The people of your center') + '</span></span></a>' : '') +
@@ -2181,7 +2192,7 @@
       installHtml(true) +
       '<button type="button" class="btn quiet block" id="tour-again">' + ICON.help + ' Show the tips again</button>' +
       '<button class="btn danger block" id="out">Sign out</button>' +
-      '<p class="small muted center">Outreach Tracker, version 8</p>';
+      '<p class="small muted center">Outreach Tracker, version 9</p>';
     $('#my').onclick = myDetailsForm;
     wireInstall(el);
     $('#tour-again', el).onclick = function () { tourReset(); toast('The tips will show again on each screen.'); go('#/home'); };
@@ -2244,8 +2255,8 @@
    */
   function roleFacts() {
     var r = me.user.role;
-    return { admin: r === 'SUPER_ADMIN', coord: r === 'COORDINATOR', leader: r === 'LEADER', asst: r === 'ASSISTANT', viewer: r === 'VIEWER',
-      record: me.can.record, manage: r === 'SUPER_ADMIN' || r === 'COORDINATOR', jobs: (me.jobs || []).length > 0 };
+    return { admin: r === 'SUPER_ADMIN' || r === 'ADMIN', coord: r === 'COORDINATOR', leader: r === 'LEADER', asst: r === 'ASSISTANT', viewer: r === 'VIEWER',
+      record: me.can.record, manage: r === 'SUPER_ADMIN' || r === 'ADMIN' || r === 'COORDINATOR', jobs: (me.jobs || []).length > 0 };
   }
   var HELP = {
     home: function (x) {
@@ -2337,12 +2348,12 @@
     templates: function () { return { title: 'Message templates', steps: ['These texts fill the WhatsApp and SMS buttons in Follow-up.', '{name} becomes the person messaged, {child} the child.'] }; },
     centers: function () { return { title: 'Programs and centers', steps: ['Add a center to a program with "+ Center".', 'Switch a center off instead of deleting it, so its history stays.'] }; },
     sync: function (x) {
-      return { title: 'Offline and sync', steps: [
+      return { title: 'Sync and download file', steps: [
         'With no signal, attendance and follow-up are saved on the phone and sent by themselves when you are online.',
         'Saves still waiting are listed here. A save the server did not accept shows why: correct it and tap "Send again", or remove it.',
         'On your own phone the children list is kept up to date by itself.',
-        me.can.export_data ? 'Download to Excel: tick what you want, choose the center and the period, then tap "Download Excel file".' : null],
-        tour: [['#excel', 'Download to Excel: tick what you need, choose a period, and get one file with a sheet for each.']] };
+        me.can.export_data ? 'Download file: tick what you want, choose the center and the period, then tap "Download Excel file".' : null],
+        tour: [['#excel', 'Download file: tick what you need, choose a period, and get one Excel file with a sheet for each.']] };
     },
     more: function () { return { title: 'More', steps: ['Your details, other screens, install the app, and sign out.', '"Show the tips again" replays the tips on every screen.'] }; },
     notifications: function () { return { title: 'Notifications', steps: ['New jobs, comments and finished reports. Tap one to open it.'] }; }
@@ -2353,7 +2364,7 @@
     var steps = hp.steps.filter(Boolean);
     var d = sheet('Help: ' + hp.title, '<ol class="steps">' + steps.map(function (t) { return '<li>' + h(t) + '</li>'; }).join('') + '</ol>' +
       (hp.tour && visibleStops(hp.tour).length ? '<button type="button" class="btn ghost block" id="tour-now" style="margin-top:12px">Show me on the screen</button>' : '') +
-      '<p class="small muted" style="margin-top:12px">Still stuck? Ask your ' + (me.user.role === 'COORDINATOR' || me.user.role === 'SUPER_ADMIN' ? 'Super Admin' : 'coordinator') + '.</p>');
+      '<p class="small muted" style="margin-top:12px">Still stuck? Ask your ' + (me.user.role === 'SUPER_ADMIN' ? 'fellow Super Admin' : me.user.role === 'ADMIN' ? 'Super Admin' : me.user.role === 'COORDINATOR' ? 'Admin' : 'coordinator') + '.</p>');
     var t = $('#tour-now', d); if (t) t.onclick = function () { d.close(); runTour(page, hp.tour); };
   }
 
