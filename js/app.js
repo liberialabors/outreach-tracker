@@ -1,4 +1,5 @@
-/* Outreach Tracker — screens. Phase 2: sign-in, people, centers. Phase 3: meetings, attendance, participants. */
+/* Outreach Tracker — screens. Phase 2: sign-in, people, centers. Phase 3: meetings, attendance, participants.
+   Phase 4: dashboard, follow-up, statistics, message templates, a child's history. */
 (function () {
   'use strict';
   var Api = window.Api, Auth = window.Auth;
@@ -12,6 +13,8 @@
     people: '<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><path d="M16 4.8a3.5 3.5 0 010 6.4M18.5 14.8c1.7.8 2.7 2.5 3 5.2"/></svg>',
     centers: '<svg viewBox="0 0 24 24"><path d="M12 21s7-5.6 7-11a7 7 0 10-14 0c0 5.4 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>',
     meetings: '<svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M8 3v4M16 3v4M3.5 10h17M9 15l2 2 4-4"/></svg>',
+    followup: '<svg viewBox="0 0 24 24"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2"/></svg>',
+    stats: '<svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/></svg>',
     participants: '<svg viewBox="0 0 24 24"><circle cx="12" cy="7.5" r="3.5"/><path d="M5 20.5c.8-4 3.6-6 7-6s6.2 2 7 6"/></svg>',
     more: '<svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>'
   };
@@ -138,14 +141,11 @@
 
   /* ---------- shell ---------- */
   function tabsFor() {
-    var t = [['home', 'Home'], ['meetings', 'Meetings']];
-    if (me.can.record) t.push(['participants', 'Children']);
-    if (me.can.manage_users || me.user.role === 'ASSISTANT') t.push(['people', 'Team']);
-    t.push(['more', 'More']);
-    return t;
+    if (!me.can.record) return [['home', 'Home'], ['meetings', 'Meetings'], ['stats', 'Statistics'], ['more', 'More']];
+    return [['home', 'Home'], ['meetings', 'Meetings'], ['followup', 'Follow-up'], ['participants', 'Children'], ['more', 'More']];
   }
   /** Pages that exist without a tab of their own, and the tab that lights up for them. */
-  var EXTRA = { centers: 'more', take: 'meetings' };
+  var EXTRA = { centers: 'more', take: 'meetings', people: 'more', stats: 'more', templates: 'more' };
   var VIEWS = {};
   var leaveGuard = null;          // set by a screen with unsaved changes; returns true if it is fine to leave
   var currentHash = '';
@@ -153,9 +153,12 @@
     var parts = (location.hash.replace(/^#\/?/, '') || 'home').split('/');
     var tabs = tabsFor(), page = parts[0];
     var allowed = tabs.some(function (t) { return t[0] === page; }) ||
-      (page === 'centers' && me.can.manage_centers) || (page === 'take' && me.can.record);
+      (page === 'centers' && me.can.manage_centers) || (page === 'take' && me.can.record) ||
+      (page === 'people' && (me.can.manage_users || me.user.role === 'ASSISTANT')) ||
+      (page === 'stats') || (page === 'templates' && me.can.record);
     if (!allowed) { page = 'home'; parts = ['home']; }
-    return { page: page, args: parts.slice(1), tab: EXTRA[page] || page, tabs: tabs };
+    var tab = tabs.some(function (t) { return t[0] === page; }) ? page : (EXTRA[page] || page);
+    return { page: page, args: parts.slice(1), tab: tab, tabs: tabs };
   }
   function render() {
     var r = route();
@@ -176,21 +179,22 @@
   function fail(e) { busy(false); if (me) toast(e.message, true); }
 
   /* ---------- home ---------- */
+  function tile(n, label, sub) {
+    return '<div class="tile"><span class="n">' + h(n) + '</span><span class="l">' + h(label) + '</span>' + (sub ? '<span class="s">' + h(sub) + '</span>' : '') + '</div>';
+  }
   function viewHome(el) {
     var first = me.user.name.split(' ')[0];
     el.innerHTML =
       '<div><h1>Hello, ' + h(first) + '</h1><p class="muted">' + h(ROLE[me.user.role]) + (me.scope.all ? ' · all programs' : '') + '</p></div>' +
       (Auth.isShared() ? '<div class="card" style="background:var(--warn-soft);border-color:#ecd98f"><strong>Borrowed phone</strong><p class="small">You will be signed out when you close the app. Tap More → Sign out when you finish.</p></div>' : '') +
-      '<div id="home-meeting"><div class="boot" style="min-height:20vh"><div class="spinner"></div></div></div>' +
-      '<div class="card"><h2>Coming next</h2><p class="muted small">Follow-up, statistics, tasks, reminders and the combined report are added in the next phases.</p></div>';
+      '<div id="home-follow"></div><div id="home-meeting"><div class="boot" style="min-height:20vh"><div class="spinner"></div></div></div><div id="home-stats"></div>';
     if (!me.programs.length) {
       $('#home-meeting').innerHTML = '<div class="card"><p class="muted">No program or center is assigned to you yet. Ask your coordinator.</p></div>';
       return;
     }
+    var today = me.today || new Date().toISOString().slice(0, 10);
     Api.call('listMeetings').then(function (r) {
       var box = $('#home-meeting'); if (!box) return;
-      var today = new Date().toISOString().slice(0, 10);
-      // The meeting that matters now: the latest open one that is not in the future, else the next one.
       var open = r.meetings.filter(function (m) { return m.status !== 'closed'; });
       var m = open.filter(function (x) { return x.date <= today; })[0] || open[open.length - 1] || r.meetings[0];
       if (!m) {
@@ -200,9 +204,31 @@
       }
       var missing = m.centers.filter(function (c) { return c.state !== 'submitted'; });
       box.innerHTML = '<h3>' + (m.date > today ? 'Next meeting' : 'Latest meeting') + '</h3>' + meetingCard(m, true) +
-        (m.centers.length > 1 ? '<p class="small muted">' + (missing.length ? missing.length + ' of ' + m.centers.length + ' centers have not submitted yet.' : 'Every center has submitted.') + '</p>' : '');
+        (m.centers.length > 1 ? '<p class="small muted">' + (missing.length ? missing.length + ' of ' + m.centers.length + ' centers have not submitted yet: ' +
+          missing.map(function (c) { return h(c.name); }).join(', ') + '.' : 'Every center has submitted.') + '</p>' : '');
       wireMeetingCards(box, r.meetings);
     }).catch(function (e) { var box = $('#home-meeting'); if (box) box.innerHTML = '<div class="card"><p class="error">' + h(e.message) + '</p></div>'; });
+    if (me.can.record) Api.call('followUps').then(function (f) {
+      var box = $('#home-follow'); if (!box) return;
+      var n = f.items.length, b = f.birthdays.length;
+      if (!n && !b) return;
+      box.innerHTML = '<a class="card alert-card" href="#/followup"><span class="grow"><strong>' + (n ? n + (n === 1 ? ' child needs' : ' children need') + ' a follow-up' : 'Follow-up') + '</strong>' +
+        (b ? '<br><span class="small">' + b + (b === 1 ? ' birthday' : ' birthdays') + ' coming up</span>' : '') + '</span><span aria-hidden="true">›</span></a>';
+    }).catch(function () {});
+    Api.call('stats', { months: 6 }).then(function (st) {
+      var box = $('#home-stats'); if (!box) return;
+      var tm = st.this_month, monthName = new Date(tm.month + '-15T12:00:00Z').toLocaleDateString('en-GB', { month: 'long', timeZone: 'UTC' });
+      var last = st.trend.slice(-6);
+      box.innerHTML = '<h3>' + h(monthName) + ' so far</h3>' +
+        '<div class="tiles">' + tile(tm.present, 'present', tm.reports + (tm.reports === 1 ? ' report' : ' reports')) + tile(tm.first_timers, 'first-timers') +
+        tile(tm.decisions, 'decisions') + tile(tm.absentees, 'absentees', 'children absent at least once') + '</div>' +
+        (last.length ? '<section class="card"><div class="head"><h2>Attendance, last ' + last.length + (last.length === 1 ? ' meeting' : ' meetings') + '</h2></div>' +
+          barChart({ id: 'home-trend', labels: last.map(function (b) { return shortDate(b.date); }), full: last.map(function (b) { return fmtDate(b.date); }),
+            series: [{ name: 'Returning', color: 'var(--s1)', values: last.map(function (b) { return b.returning; }) },
+                     { name: 'First-timers', color: 'var(--s2)', values: last.map(function (b) { return b.first_timers; }) }] }) +
+          '<a class="btn ghost block" href="#/stats" style="margin-top:12px">All statistics</a></section>' : '');
+      wireCharts(box);
+    }).catch(function () {});
   }
 
   /* ---------- people ---------- */
@@ -210,7 +236,7 @@
     el.innerHTML = '<div class="boot" style="min-height:40vh"><div class="spinner"></div></div>';
     Api.call('listUsers').then(function (list) {
       users = list.sort(function (a, b) { return ROLE_ORDER.indexOf(a.role) - ROLE_ORDER.indexOf(b.role) || a.name.localeCompare(b.name); });
-      el.innerHTML = '<div class="head"><h1>Team</h1></div>' +
+      el.innerHTML = '<a href="#/more" class="small">‹ More</a><div class="head"><h1>Team</h1></div>' +
         '<p class="muted small">' + (me.can.manage_users ? 'People who can sign in. Tap a name to edit, reset a PIN or switch access off.' : 'The team of your center.') + '</p>' +
         '<div class="list">' + (users.length ? users.map(userRow).join('') : '<div class="empty">Nobody here yet.</div>') + '</div>' +
         (me.can.manage_users ? '<button class="btn fab" id="add-user">+ Add person</button>' : '');
@@ -693,6 +719,7 @@
       (p.school ? '<p class="small muted">' + h(p.school) + '</p>' : '') +
       '<p class="small">' + (p.guardian_consent ? 'Guardian consent given ' + h(fmtDate(p.consent_date)) : '<span class="badge bad">No guardian consent recorded</span>') + '</p>' +
       '<div class="stack" style="margin-top:16px">' +
+      '<button type="button" class="btn block" data-a="hist">Attendance and follow-up history</button>' +
       '<button type="button" class="btn quiet block" data-a="edit">Edit details</button>' +
       (p.status === 'active' ? '<button type="button" class="btn quiet block" data-a="off">Mark inactive</button><p class="small muted">Inactive children are kept but no longer listed for attendance.</p>'
         : '<button type="button" class="btn ghost block" data-a="on">Mark active again</button>') +
@@ -700,6 +727,7 @@
     $all('[data-a]', d).forEach(function (b) {
       b.onclick = function () {
         var a = b.dataset.a; d.close();
+        if (a === 'hist') return historySheet(p);
         if (a === 'edit') return participantForm(p, p.center_id, function (vals) {
           return Api.call('saveParticipant', vals).then(function () { toast('Saved'); render(); });
         });
@@ -786,17 +814,336 @@
     };
   }
 
+  /* ---------- charts ---------- */
+  /** Short axis label: "14 Nov". */
+  function shortDate(d) {
+    var x = new Date(d + 'T12:00:00Z');
+    return isNaN(x) ? d : x.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+  }
+  /**
+   * Stacked bar chart as inline SVG. o = { id, labels, full (tooltip labels), series: [{name, color, values}] }.
+   * Legend above, value tooltip on tap or hover, and a table view for anyone who cannot read the colours.
+   */
+  function barChart(o) {
+    var n = o.labels.length, W = 340, H = 170, L = 30, R = 6, T = 10, B = 24;
+    var totals = o.labels.map(function (_, i) { return o.series.reduce(function (a, s) { return a + (s.values[i] || 0); }, 0); });
+    var max = Math.max.apply(null, totals.concat([1]));
+    var step = Math.pow(10, Math.floor(Math.log10(max))), nice = Math.ceil(max / step) * step;
+    if (nice / step <= 2) step = step / 2;
+    step = Math.max(1, step);                      // counts of people: whole numbers only
+    nice = Math.max(Math.ceil(max / step) * step, 1);
+    var plotW = W - L - R, plotH = H - T - B, slot = plotW / n, bw = Math.max(4, Math.min(28, slot * 0.6));
+    var y = function (v) { return T + plotH - (v / nice) * plotH; };
+    var grid = '', ticks = [];
+    for (var v = 0; v <= nice + 1e-9; v += step) ticks.push(Math.round(v * 100) / 100);
+    ticks.forEach(function (t) {
+      grid += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(t) + '" y2="' + y(t) + '" class="grid"/>' +
+        '<text x="' + (L - 6) + '" y="' + (y(t) + 4) + '" class="axis" text-anchor="end">' + t + '</text>';
+    });
+    var every = Math.ceil(n / 7), bars = '';
+    o.labels.forEach(function (lab, i) {
+      var cx = L + slot * i + slot / 2, base = y(0), segs = [];
+      o.series.forEach(function (s) { if (s.values[i] > 0) segs.push({ s: s, v: s.values[i] }); });
+      segs.forEach(function (sg, k) {
+        var h0 = (sg.v / nice) * plotH, top = base - h0, gap = k ? 2 : 0, hh = Math.max(0, h0 - gap);
+        var last = k === segs.length - 1, r = last ? Math.min(4, hh / 2, bw / 2) : 0, x0 = cx - bw / 2, x1 = cx + bw / 2, yb = base - gap;
+        bars += '<path fill="' + sg.s.color + '" d="M' + x0 + ' ' + yb + 'V' + (top + r) + (r ? 'Q' + x0 + ' ' + top + ' ' + (x0 + r) + ' ' + top + 'H' + (x1 - r) + 'Q' + x1 + ' ' + top + ' ' + x1 + ' ' + (top + r) : 'H' + x1) + 'V' + yb + 'Z"/>';
+        base = top;
+      });
+      if (i % every === 0 || i === n - 1) bars += '<text x="' + cx + '" y="' + (H - 6) + '" class="axis" text-anchor="middle">' + h(lab) + '</text>';
+      bars += '<rect class="hit" data-i="' + i + '" x="' + (L + slot * i) + '" y="' + T + '" width="' + slot + '" height="' + (plotH + B) + '" fill="transparent"/>';
+    });
+    var legend = o.series.length > 1 ? '<div class="legend">' + o.series.map(function (s) {
+      return '<span><i style="background:' + s.color + '"></i>' + h(s.name) + '</span>'; }).join('') + '</div>' : '';
+    var table = '<table class="data" hidden><thead><tr><th>Date</th>' + o.series.map(function (s) { return '<th>' + h(s.name) + '</th>'; }).join('') +
+      (o.series.length > 1 ? '<th>Total</th>' : '') + '</tr></thead><tbody>' + o.labels.map(function (lab, i) {
+        return '<tr><td>' + h((o.full || o.labels)[i]) + '</td>' + o.series.map(function (s) { return '<td>' + (s.values[i] || 0) + '</td>'; }).join('') +
+          (o.series.length > 1 ? '<td><strong>' + totals[i] + '</strong></td>' : '') + '</tr>'; }).join('') + '</tbody></table>';
+    window._charts = window._charts || {};
+    window._charts[o.id] = { o: o, totals: totals };
+    return '<div class="chart" data-chart="' + h(o.id) + '">' + legend +
+      '<div class="plot"><svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + h(o.series.map(function (s) { return s.name; }).join(' and ')) + ' per meeting">' +
+      grid + '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(0) + '" y2="' + y(0) + '" class="base"/>' + bars + '</svg><div class="tip" hidden></div></div>' +
+      '<button type="button" class="linkbtn small" data-table>Show as table</button>' + table + '</div>';
+  }
+  function wireCharts(el) {
+    $all('.chart', el).forEach(function (c) {
+      var info = (window._charts || {})[c.dataset.chart]; if (!info) return;
+      var tip = $('.tip', c), plot = $('.plot', c), svg = $('svg', c);
+      var show = function (i, rect) {
+        var o = info.o;
+        tip.innerHTML = '<strong>' + h((o.full || o.labels)[i]) + '</strong>' + o.series.map(function (s) {
+          return '<span><i style="background:' + s.color + '"></i>' + h(s.name) + ': <b>' + (s.values[i] || 0) + '</b></span>'; }).join('') +
+          (o.series.length > 1 ? '<span>Total: <b>' + info.totals[i] + '</b></span>' : '');
+        tip.hidden = false;
+        var pr = plot.getBoundingClientRect(), rr = rect.getBoundingClientRect();
+        var left = rr.left - pr.left + rr.width / 2 - tip.offsetWidth / 2;
+        tip.style.left = Math.max(0, Math.min(pr.width - tip.offsetWidth, left)) + 'px';
+        $all('.hit', svg).forEach(function (r) { r.classList.toggle('on', r === rect); });
+      };
+      $all('.hit', svg).forEach(function (r) {
+        r.addEventListener('pointerenter', function () { show(+r.dataset.i, r); });
+        r.addEventListener('click', function () { show(+r.dataset.i, r); });
+      });
+      plot.addEventListener('pointerleave', function (e) { if (e.pointerType === 'mouse') { tip.hidden = true; $all('.hit', svg).forEach(function (r) { r.classList.remove('on'); }); } });
+      $('[data-table]', c).onclick = function () {
+        var t = $('table', c), open = t.hidden; t.hidden = !open; this.textContent = open ? 'Hide table' : 'Show as table';
+      };
+    });
+  }
+  /** Horizontal bars for a few named values (centers, programs). */
+  function hbars(rows, label, value, fmt) {
+    var max = Math.max.apply(null, rows.map(value).concat([1]));
+    return '<div class="hbars">' + rows.map(function (r) {
+      var v = value(r);
+      return '<div class="hb"><span class="hb-l">' + h(label(r)) + '</span><span class="hb-t"><span class="hb-b" style="width:' + Math.max(v ? 2 : 0, v * 100 / max) + '%"></span></span>' +
+        '<span class="hb-v">' + h(fmt ? fmt(v) : v) + '</span></div>';
+    }).join('') + '</div>';
+  }
+
+  /* ---------- follow-up ---------- */
+  var REASON = { absent: ['Absent', 'warn'], inactive: ['Missed in a row', 'bad'], first_timer: ['First-timer', ''], decision: ['Decision', 'dec'], due: ['Next action due', 'warn'] };
+  var PURPOSE_FOR = { absent: 'absentee', inactive: 'inactivity', first_timer: 'first_timer', decision: 'decision', due: 'absentee', birthday: 'birthday' };
+  var METHOD = { call: 'Call', whatsapp: 'WhatsApp', sms: 'SMS', visit: 'Visit' };
+  var fState = { center: '', reason: 'all' };
+  var templatesCache = null;
+  function loadTemplates() {
+    if (templatesCache) return Promise.resolve(templatesCache);
+    return Api.call('listTemplates').then(function (t) { templatesCache = t; return t; });
+  }
+  function fillTemplate(text, ctx) {
+    return String(text || '').replace(/\{(\w+)\}/g, function (m, k) { return ctx[k] !== undefined && ctx[k] !== '' ? ctx[k] : m; });
+  }
+  function telNumber(phone) { var n = waNumber(phone); return n ? '+' + n : ''; }
+  function firstName(n) { return String(n || '').trim().split(/\s+/)[0]; }
+
+  function viewFollowUp(el) {
+    var centers = recordCenters();
+    if (fState.center && !centers.some(function (c) { return c.center_id === fState.center; })) fState.center = '';
+    el.innerHTML = '<div class="boot" style="min-height:40vh"><div class="spinner"></div></div>';
+    Promise.all([Api.call('followUps', fState.center ? { center_id: fState.center } : {}), loadTemplates()]).then(function (res) {
+      var f = res[0], items = f.items, counts = { all: items.length };
+      items.forEach(function (x) { x.reasons.forEach(function (r) { counts[r] = (counts[r] || 0) + 1; }); });
+      if (fState.reason !== 'all' && !counts[fState.reason]) fState.reason = 'all';
+      el.innerHTML = '<h1>Follow-up</h1>' +
+        '<p class="muted small">Children to call or message after the latest meeting of each center. Log what happened and they leave the list.</p>' +
+        (centers.length > 1 ? '<label class="field" style="margin-top:0">Center<select id="fc"><option value="">All my centers</option>' + centers.map(function (c) {
+          return '<option value="' + h(c.center_id) + '"' + (c.center_id === fState.center ? ' selected' : '') + '>' + h(centerLabel(c)) + '</option>'; }).join('') + '</select></label>' : '') +
+        (f.birthdays.length ? '<section class="card"><h2>Birthdays coming up</h2><div class="list">' + f.birthdays.map(function (b) {
+          return '<button type="button" class="row" data-bday="' + h(b.participant_id) + '"><span class="avatar">' + h(initials(b.name)) + '</span><span class="grow"><span class="name">' + h(b.name) + '</span><br>' +
+            '<span class="sub">' + (b.in_days === 0 ? 'Today' : b.in_days === 1 ? 'Tomorrow' : 'In ' + b.in_days + ' days, ' + h(shortDate(b.birthday))) + ' · turns ' + b.turning + (centers.length > 1 ? ' · ' + h(b.center) : '') + '</span></span></button>';
+        }).join('') + '</div></section>' : '') +
+        (items.length ? '<div class="chips">' + ['all', 'inactive', 'absent', 'first_timer', 'decision', 'due'].filter(function (k) { return k === 'all' || counts[k]; }).map(function (k) {
+          return '<button type="button" class="chip-btn' + (fState.reason === k ? ' on' : '') + '" data-r="' + k + '">' + (k === 'all' ? 'All' : REASON[k][0]) + ' <b>' + counts[k] + '</b></button>'; }).join('') + '</div>' : '') +
+        '<div class="list" id="flist"></div>';
+      function draw() {
+        var shown = items.filter(function (x) { return fState.reason === 'all' || x.reasons.indexOf(fState.reason) !== -1; });
+        $('#flist', el).innerHTML = shown.length ? shown.map(function (x) {
+          return '<button type="button" class="row" data-id="' + h(x.participant_id) + '"><span class="avatar">' + h(initials(x.name)) + '</span><span class="grow"><span class="name">' + h(x.name) + '</span><br>' +
+            x.reasons.map(function (r) { return '<span class="badge ' + REASON[r][1] + '">' + (r === 'inactive' ? 'Missed ' + x.streak + ' in a row' : REASON[r][0]) + '</span>'; }).join('') +
+            '<br><span class="sub">' + (centers.length > 1 ? h(x.center) + ' · ' : '') + (x.reasons[0] === 'due' ? h(x.due_action) + ' (due ' + h(shortDate(x.due_date)) + ')' : 'Meeting of ' + h(shortDate(x.meeting_date))) +
+            (x.last_contact ? ' · last contact ' + h(shortDate(x.last_contact.date)) + ' by ' + h(METHOD[x.last_contact.method] || x.last_contact.method) : '') + '</span></span></button>';
+        }).join('') : '<div class="empty">' + (items.length ? 'Nobody in this group.' : 'Nobody needs a follow-up right now.') + '</div>';
+        $all('#flist .row', el).forEach(function (b) {
+          b.onclick = function () { contactSheet(items.filter(function (x) { return x.participant_id === b.dataset.id; })[0], null); };
+        });
+      }
+      var fc = $('#fc', el); if (fc) fc.onchange = function () { fState.center = fc.value; viewFollowUp(el); };
+      $all('.chip-btn', el).forEach(function (b) { b.onclick = function () { fState.reason = b.dataset.r; $all('.chip-btn', el).forEach(function (x) { x.classList.toggle('on', x === b); }); draw(); }; });
+      $all('[data-bday]', el).forEach(function (b) {
+        b.onclick = function () { contactSheet(f.birthdays.filter(function (x) { return x.participant_id === b.dataset.bday; })[0], 'birthday'); };
+      });
+      draw();
+    }).catch(fail);
+  }
+
+  /**
+   * Contact a child or his guardian, then log what happened. Both numbers are offered;
+   * the child's own number comes first when there is one.
+   */
+  function contactSheet(x, forced) {
+    var reason = forced || x.reasons[0], purpose = PURPOSE_FOR[reason] || 'absentee';
+    var programId = (me.centers.filter(function (c) { return c.center_id === x.center_id; })[0] || {}).program_id;
+    var tpl = ((templatesCache && templatesCache.templates[programId]) || {})[purpose] || { body: '', body_guardian: '' };
+    var ctx = { child: firstName(x.name), date: x.meeting_date ? fmtDate(x.meeting_date) : '', theme: x.theme || '', center: x.center, leader: firstName(me.user.name) };
+    var who = [];
+    if (x.phone) who.push({ key: 'child', label: x.name.split(' ')[0] + ' (child)', phone: x.phone, text: fillTemplate(tpl.body, Object.assign({}, ctx, { name: firstName(x.name) })) });
+    if (x.guardian_phone) who.push({ key: 'guardian', label: (x.guardian_name || 'Guardian') + ' (guardian)', phone: x.guardian_phone,
+      text: fillTemplate(tpl.body_guardian || tpl.body, Object.assign({}, ctx, { name: String(x.guardian_name || '').trim() || 'there' })) });
+    var reasonText = reason === 'birthday' ? 'Birthday ' + (x.in_days === 0 ? 'today' : 'on ' + fmtDate(x.birthday)) + ', turns ' + x.turning
+      : x.reasons.map(function (r) { return r === 'inactive' ? 'Missed ' + x.streak + ' meetings in a row' : r === 'due' ? 'Next action due: ' + x.due_action : REASON[r][0]; }).join(' · ');
+    var d = sheet(x.name,
+      '<p class="muted">' + h(reasonText) + '</p>' + (x.meeting_date && reason !== 'birthday' && reason !== 'due' ? '<p class="small muted">' + h(fmtDate(x.meeting_date)) + (x.theme ? ' · ' + h(x.theme) : '') + '</p>' : '') +
+      (x.last_contact ? '<p class="small">Last contact ' + h(fmtDate(x.last_contact.date)) + ' by ' + h(METHOD[x.last_contact.method] || '') + ': ' + h(x.last_contact.outcome) + '</p>' : '') +
+      (who.length ? who.map(function (w, i) {
+        return '<div class="contact"><p><strong>' + h(w.label) + '</strong> · ' + h(w.phone) + '</p>' +
+          '<label class="field small">Message<textarea rows="4" data-msg="' + i + '">' + h(w.text) + '</textarea></label>' +
+          '<div class="cbtns"><a class="btn quiet" data-m="call" href="tel:' + h(telNumber(w.phone)) + '">Call</a>' +
+          '<a class="btn quiet" data-m="whatsapp" data-w="' + i + '" target="_blank" rel="noopener" href="#">WhatsApp</a>' +
+          '<a class="btn quiet" data-m="sms" data-w="' + i + '" href="#">SMS</a></div></div>';
+      }).join('') : '<p class="error">No phone number is recorded for this child or the guardian. Add one under Children, or log a visit.</p>') +
+      '<hr><h2>Log what happened</h2>' +
+      '<div class="seg" role="radiogroup" style="margin-top:8px">' + Object.keys(METHOD).map(function (m) { return '<label><input type="radio" name="method" value="' + m + '"><span>' + METHOD[m] + '</span></label>'; }).join('') + '</div>' +
+      '<div class="chips" style="margin-top:10px">' + ['Spoke with guardian', 'Spoke with child', 'No answer', 'Message sent', 'Will come next time', 'Was sick', 'Travelled'].map(function (o) {
+        return '<button type="button" class="chip-btn" data-o="' + h(o) + '">' + h(o) + '</button>'; }).join('') + '</div>' +
+      '<label class="field">What happened<input type="text" name="outcome" maxlength="300" autocomplete="off"></label>' +
+      '<label class="field">Notes<span class="hint">Optional</span><textarea name="notes" rows="2" maxlength="1000"></textarea></label>' +
+      '<div class="two"><label class="field">Next action<span class="hint">Optional</span><input type="text" name="next_action" maxlength="200" placeholder="e.g. Call again"></label>' +
+      '<label class="field">On<span class="hint">Back on the list then</span><input type="date" name="next_action_date"></label></div>',
+      'Save', function (form) {
+        var f = form.elements, m = form.querySelector('[name=method]:checked');
+        if (!m) throw new Error('Choose how you made contact: Call, WhatsApp, SMS or Visit.');
+        if (!f.outcome.value.trim()) throw new Error('Say what happened.');
+        if (f.next_action_date.value && !f.next_action.value.trim()) throw new Error('Say what the next action is.');
+        return Api.call('logFollowUp', { participant_id: x.participant_id, session_id: reason === 'birthday' ? '' : x.session_id, reason: reason,
+          method: m.value, outcome: f.outcome.value, notes: f.notes.value, next_action: f.next_action.value, next_action_date: f.next_action_date.value })
+          .then(function () { toast('Saved for ' + firstName(x.name)); render(); });
+      });
+    var pick = function (m) { var r = d.querySelector('[name=method][value=' + m + ']'); if (r) r.checked = true; };
+    $all('[data-m]', d).forEach(function (a) {
+      a.addEventListener('click', function (e) {
+        pick(a.dataset.m);
+        if (a.dataset.w === undefined) return;
+        var i = +a.dataset.w, w = who[i], text = d.querySelector('[data-msg="' + i + '"]').value;
+        if (a.dataset.m === 'whatsapp') a.href = 'https://wa.me/' + waNumber(w.phone) + '?text=' + encodeURIComponent(text);
+        else { e.preventDefault(); location.href = 'sms:' + telNumber(w.phone) + '?body=' + encodeURIComponent(text); }
+      });
+    });
+    $all('[data-o]', d).forEach(function (b) { b.onclick = function () { d.querySelector('[name=outcome]').value = b.dataset.o; }; });
+  }
+
+  /* ---------- a child's history ---------- */
+  var DECISION_NAME = { salvation: 'Salvation', rededication: 'Rededication', commitment_to_grow: 'Commitment to grow' };
+  function historySheet(p) {
+    busy(true);
+    Api.call('participantHistory', { participant_id: p.participant_id }).then(function (r) {
+      busy(false);
+      sheet(p.name,
+        '<div class="tiles">' + tile(r.rate === null ? '–' : r.rate + '%', 'attendance', r.present + ' of ' + r.recorded + ' meetings') +
+          tile(r.present_streak, 'in a row now') + tile(r.best_streak, 'best run') + '</div>' +
+        (r.absent_streak ? '<p class="small"><span class="badge ' + (r.absent_streak > 1 ? 'bad' : 'warn') + '">Missed the last ' + (r.absent_streak === 1 ? 'meeting' : r.absent_streak + ' meetings') + '</span></p>' : '') +
+        '<h3 style="margin-top:14px">Meetings</h3>' + (r.attendance.length ? '<div class="dots">' + r.attendance.slice().reverse().map(function (a) {
+          return '<span class="dot' + (a.present ? ' on' : '') + '" title="' + h(fmtDate(a.date)) + ': ' + (a.present ? 'present' : 'absent') + '"><i></i><small>' + h(shortDate(a.date)) + '</small></span>';
+        }).join('') + '</div><p class="small muted">Green = present. Oldest on the left.</p>' : '<p class="muted small">No submitted meeting yet.</p>') +
+        '<h3 style="margin-top:14px">Decisions</h3>' + (r.decisions.length ? '<ul class="plain">' + r.decisions.map(function (x) { return '<li>' + h(fmtDate(x.date)) + ' — ' + h(DECISION_NAME[x.type] || x.type) + '</li>'; }).join('') + '</ul>' : '<p class="muted small">None recorded.</p>') +
+        '<h3 style="margin-top:14px">Follow-up log</h3>' + (r.followups.length ? '<ul class="plain">' + r.followups.map(function (x) {
+          return '<li><strong>' + h(fmtDate(x.date)) + '</strong> · ' + h(METHOD[x.method] || x.method) + (x.by ? ' by ' + h(x.by) : '') + '<br>' + h(x.outcome) +
+            (x.notes ? '<br><span class="muted">' + h(x.notes) + '</span>' : '') + (x.next_action ? '<br><span class="small">Next: ' + h(x.next_action) + (x.next_action_date ? ' on ' + h(fmtDate(x.next_action_date)) : '') + '</span>' : '') + '</li>';
+        }).join('') + '</ul>' : '<p class="muted small">No contact logged yet.</p>'));
+    }).catch(fail);
+  }
+
+  /* ---------- statistics ---------- */
+  var sState = { months: 6, program: '', center: '' };
+  function viewStats(el) {
+    el.innerHTML = '<div class="boot" style="min-height:40vh"><div class="spinner"></div></div>';
+    Api.call('stats', { months: sState.months, program_id: sState.program || undefined, center_id: sState.center || undefined }).then(function (st) {
+      var T = st.totals, avg = T.meetings ? Math.round(T.present * 10 / T.meetings) / 10 : 0, tr = st.trend;
+      var progs = st.programs, cents = st.centers.filter(function (c) { return !sState.program || c.program_id === sState.program; });
+      el.innerHTML = (me.can.record ? '<a href="#/more" class="small">‹ More</a>' : '') + '<h1>Statistics</h1>' +
+        '<div class="seg small-seg">' + [3, 6, 12].map(function (m) { return '<label><input type="radio" name="months" value="' + m + '"' + (sState.months === m ? ' checked' : '') + '><span>' + m + ' months</span></label>'; }).join('') + '</div>' +
+        (progs.length > 1 && !sState.center ? '<label class="field">Program<select id="sp"><option value="">All programs</option>' + progs.map(function (p) {
+          return '<option value="' + h(p.program_id) + '"' + (p.program_id === sState.program ? ' selected' : '') + '>' + h(p.name) + '</option>'; }).join('') + '</select></label>' : '') +
+        ((cents.length > 1 || sState.center) ? '<label class="field">Center<select id="sc"><option value="">All centers</option>' + cents.map(function (c) {
+          return '<option value="' + h(c.center_id) + '"' + (c.center_id === sState.center ? ' selected' : '') + '>' + h(c.name) + '</option>'; }).join('') + '</select></label>' : '') +
+        '<div class="tiles">' + tile(avg, 'present per meeting', T.meetings + (T.meetings === 1 ? ' meeting' : ' meetings')) + tile(T.first_timers, 'first-timers') +
+          tile(T.decisions, 'decisions') + tile(T.retention ? T.retention.pct + '%' : '–', 'came back', T.retention ? T.retention.returned + ' of ' + T.retention.first_timers + ' first-timers' : 'no first-timers yet') + '</div>' +
+        (tr.length ? '<section class="card"><h2>Attendance per meeting</h2><p class="small muted">All selected centers together. Tap a bar for the numbers.</p>' +
+          barChart({ id: 'st-att', labels: tr.map(function (b) { return shortDate(b.date); }), full: tr.map(function (b) { return fmtDate(b.date) + ' (' + b.centers + (b.centers === 1 ? ' center)' : ' centers)'); }),
+            series: [{ name: 'Returning', color: 'var(--s1)', values: tr.map(function (b) { return b.returning; }) }, { name: 'First-timers', color: 'var(--s2)', values: tr.map(function (b) { return b.first_timers; }) }] }) + '</section>' +
+          (T.decisions ? '<section class="card"><h2>Decisions per meeting</h2>' +
+            barChart({ id: 'st-dec', labels: tr.map(function (b) { return shortDate(b.date); }), full: tr.map(function (b) { return fmtDate(b.date); }),
+              series: [{ name: 'Salvation', color: 'var(--s1)', values: tr.map(function (b) { return b.salvation; }) },
+                       { name: 'Rededication', color: 'var(--s2)', values: tr.map(function (b) { return b.rededication; }) },
+                       { name: 'Commitment to grow', color: 'var(--s3)', values: tr.map(function (b) { return b.commitment_to_grow; }) }] }) + '</section>' : '')
+          : '<div class="card empty">No submitted reports in this period.</div>') +
+        (st.per_center.length > 1 ? '<section class="card"><h2>Centers compared</h2><p class="small muted">Average present per meeting</p>' +
+          hbars(st.per_center, function (c) { return c.name; }, function (c) { return c.avg_present; }) +
+          '<div class="scroll"><table class="data"><thead><tr><th>Center</th><th>Reports</th><th>Avg present</th><th>First-timers</th><th>Decisions</th><th>Came back</th><th>On time</th></tr></thead><tbody>' +
+          st.per_center.map(function (c) {
+            return '<tr><td>' + h(c.name) + '</td><td>' + c.reports + '</td><td>' + c.avg_present + '</td><td>' + c.first_timers + '</td><td>' + c.decisions + '</td><td>' +
+              (c.retention ? c.retention.pct + '%' : '–') + '</td><td>' + (c.on_time_pct === null ? '–' : c.on_time_pct + '%') + '</td></tr>';
+          }).join('') + '</tbody></table></div><p class="small muted">Task completion per center is added with tasks in the next phase.</p></section>' : '') +
+        (st.per_program.length ? '<section class="card"><h2>Programs compared</h2>' + hbars(st.per_program, function (p) { return p.name; }, function (p) { return p.avg_present_per_meeting; }) +
+          '<div class="scroll"><table class="data"><thead><tr><th>Program</th><th>Centers</th><th>Meetings</th><th>Avg present</th><th>First-timers</th><th>Decisions</th></tr></thead><tbody>' +
+          st.per_program.map(function (p) { return '<tr><td>' + h(p.name) + '</td><td>' + p.centers + '</td><td>' + p.meetings + '</td><td>' + p.avg_present_per_meeting + '</td><td>' + p.first_timers + '</td><td>' + p.decisions + '</td></tr>'; }).join('') +
+          '</tbody></table></div></section>' : '') +
+        (st.children ? '<section class="card"><h2>Most faithful</h2><p class="small muted">Attendance rate in this period, at least 2 meetings</p>' +
+          (st.children.faithful.length ? '<div class="list">' + st.children.faithful.map(function (k) {
+            return '<div class="row static"><span class="grow"><span class="name">' + h(k.name) + '</span><br><span class="sub">' + (st.per_center.length > 1 ? h(k.center) + ' · ' : '') +
+              k.present + ' of ' + k.recorded + ' · ' + k.streak + ' in a row now · best run ' + k.best_streak + '</span></span><span class="badge">' + k.rate + '%</span></div>'; }).join('') + '</div>' : '<p class="muted small">Not enough meetings yet.</p>') +
+          '</section><section class="card"><h2>At risk</h2><p class="small muted">Missed ' + (st.children.at_risk.length ? 'several' : '') + ' meetings in a row (from the setting “inactivity meetings”)</p>' +
+          (st.children.at_risk.length ? '<div class="list">' + st.children.at_risk.map(function (k) {
+            return '<div class="row static"><span class="grow"><span class="name">' + h(k.name) + '</span><br><span class="sub">' + (st.per_center.length > 1 ? h(k.center) + ' · ' : '') +
+              (k.last_present ? 'last came ' + h(fmtDate(k.last_present)) : 'never present yet') + '</span></span><span class="badge bad">' + k.absent_streak + ' missed</span></div>'; }).join('') + '</div>' : '<p class="muted small">Nobody right now.</p>') +
+          '</section>' : '') +
+        '<p class="small muted center">' + h(fmtDate(st.range.from)) + ' – ' + h(fmtDate(st.range.to)) + ' · submitted reports only</p>';
+      $all('[name=months]', el).forEach(function (i) { i.onchange = function () { sState.months = +i.value; viewStats(el); }; });
+      var sp = $('#sp', el); if (sp) sp.onchange = function () { sState.program = sp.value; sState.center = ''; viewStats(el); };
+      var sc = $('#sc', el); if (sc) sc.onchange = function () { sState.center = sc.value; viewStats(el); };
+      wireCharts(el);
+    }).catch(fail);
+  }
+
+  /* ---------- message templates ---------- */
+  var TPL_NAME = { absentee: 'Absent', inactivity: 'Missed several in a row', first_timer: 'First-timer welcome', decision: 'After a decision', birthday: 'Birthday' };
+  var tState = { program: '' };
+  function viewTemplates(el) {
+    templatesCache = null;
+    el.innerHTML = '<div class="boot" style="min-height:40vh"><div class="spinner"></div></div>';
+    loadTemplates().then(function (t) {
+      var pids = Object.keys(t.templates);
+      if (!tState.program || pids.indexOf(tState.program) === -1) tState.program = pids[0] || '';
+      var set = t.templates[tState.program] || {}, canEdit = t.can_edit.indexOf(tState.program) !== -1;
+      el.innerHTML = '<a href="#/more" class="small">‹ More</a><h1>Message templates</h1>' +
+        '<p class="muted small">Used by the WhatsApp and SMS buttons in Follow-up. You can still change a message before sending it.</p>' +
+        (pids.length > 1 ? '<label class="field">Program<select id="tp">' + pids.map(function (p) { return '<option value="' + h(p) + '"' + (p === tState.program ? ' selected' : '') + '>' + h(programName(p)) + '</option>'; }).join('') + '</select></label>' : '') +
+        '<div class="card small"><strong>Placeholders</strong><br>{name} the person you message · {child} the child\'s first name · {date} meeting date · {theme} · {center} · {leader} your first name</div>' +
+        Object.keys(TPL_NAME).map(function (k) {
+          var x = set[k]; if (!x) return '';
+          return '<section class="card"><div class="head"><h2>' + TPL_NAME[k] + '</h2>' + (x.own ? '<span class="badge">This program</span>' : '') +
+            (canEdit ? '<button class="btn quiet mini" data-edit="' + k + '">Edit</button>' : '') + '</div>' +
+            '<p class="small muted">To the child</p><p class="tpl">' + h(x.body) + '</p><p class="small muted">To the guardian</p><p class="tpl">' + h(x.body_guardian) + '</p></section>';
+        }).join('') + (!canEdit ? '<p class="small muted">Only the Coordinator of the program can change these.</p>' : '');
+      var tp = $('#tp', el); if (tp) tp.onchange = function () { tState.program = tp.value; viewTemplates(el); };
+      $all('[data-edit]', el).forEach(function (b) {
+        b.onclick = function () {
+          var k = b.dataset.edit, x = set[k];
+          var d = sheet(TPL_NAME[k],
+            '<label class="field">To the child<textarea name="body" rows="5" maxlength="700">' + h(x.body) + '</textarea></label>' +
+            '<label class="field">To the guardian<textarea name="body_guardian" rows="5" maxlength="700">' + h(x.body_guardian) + '</textarea></label>' +
+            '<p class="small muted">{name} {child} {date} {theme} {center} {leader}</p>' +
+            (x.own ? '<p><button type="button" class="linkbtn" data-reset>Go back to the standard message</button></p>' : ''),
+            'Save', function (form) {
+              return Api.call('saveTemplate', { program_id: tState.program, purpose: k, body: form.elements.body.value, body_guardian: form.elements.body_guardian.value })
+                .then(function (r) { templatesCache = r; toast('Message saved'); render(); });
+            });
+          var rs = $('[data-reset]', d);
+          if (rs) rs.onclick = function () {
+            d.close(); busy(true);
+            Api.call('saveTemplate', { program_id: tState.program, purpose: k, reset: true }).then(function (r) { busy(false); templatesCache = r; toast('Standard message restored'); render(); }).catch(fail);
+          };
+        };
+      });
+    }).catch(fail);
+  }
+
   /* ---------- more ---------- */
   function viewMore(el) {
     el.innerHTML = '<h1>More</h1>' +
       '<div class="list"><button type="button" class="row" id="my"><span class="avatar">' + h(initials(me.user.name)) + '</span><span class="grow"><span class="name">' + h(me.user.name) + '</span><br><span class="sub">' +
         h(ROLE[me.user.role]) + (me.user.email ? ' · ' + h(me.user.email) : me.user.phone ? ' · ' + h(me.user.phone) : '') + '</span></span></button></div>' +
-      (me.can.manage_centers ? '<h3>Organization</h3><div class="list"><a class="row" href="#/centers"><span class="grow"><span class="name">Programs and centers</span><br><span class="sub">Add, rename or switch off</span></span></a></div>' : '') +
+      '<h3>Work</h3><div class="list">' +
+        (me.can.record ? '<a class="row" href="#/stats"><span class="grow"><span class="name">Statistics</span><br><span class="sub">Attendance, decisions, centers compared</span></span></a>' : '') +
+        (me.can.manage_users || me.user.role === 'ASSISTANT' ? '<a class="row" href="#/people"><span class="grow"><span class="name">Team</span><br><span class="sub">' + (me.can.manage_users ? 'Add people, reset PINs, switch access' : 'The people of your center') + '</span></span></a>' : '') +
+        (me.can.record ? '<a class="row" href="#/templates"><span class="grow"><span class="name">Message templates</span><br><span class="sub">Texts for WhatsApp and SMS follow-up</span></span></a>' : '') +
+        (me.can.manage_centers ? '<a class="row" href="#/centers"><span class="grow"><span class="name">Programs and centers</span><br><span class="sub">Add, rename or switch off</span></span></a>' : '') +
+      '</div>' +
       (me.can.settings ? '<h3>Super Admin</h3><div class="list">' +
         '<button type="button" class="row" id="settings"><span class="grow"><span class="name">System settings</span><br><span class="sub">Name, sign-in, reminders</span></span></button>' +
         '<button type="button" class="row" id="shares"><span class="grow"><span class="name">Sharing between programs</span><br><span class="sub">Let one program see another\'s figures</span></span></button></div>' : '') +
       '<button class="btn danger block" id="out">Sign out</button>' +
-      '<p class="small muted center">Outreach Tracker · phase 3</p>';
+      '<p class="small muted center">Outreach Tracker · phase 4</p>';
     $('#my').onclick = myDetailsForm;
     $('#out').onclick = signOut;
     if (me.can.settings) { $('#settings').onclick = settingsForm; $('#shares').onclick = sharesForm; }
@@ -861,7 +1208,8 @@
   }
   Auth.on('signedIn', start);
   Auth.on('lost', function (err) { $all('dialog').forEach(function (d) { d.close(); }); busy(false); showLogin(err && err.code !== 'AUTH_REQUIRED' ? err.message : ''); });
-  VIEWS = { home: viewHome, meetings: viewMeetings, take: viewTake, participants: viewParticipants, people: viewPeople, centers: viewCenters, more: viewMore };
+  VIEWS = { home: viewHome, meetings: viewMeetings, take: viewTake, followup: viewFollowUp, participants: viewParticipants, people: viewPeople,
+    centers: viewCenters, stats: viewStats, templates: viewTemplates, more: viewMore };
   window.addEventListener('hashchange', function () {
     if (!me) return;
     if (leaveGuard && !leaveGuard()) { history.replaceState(null, '', currentHash || '#/home'); return; }
