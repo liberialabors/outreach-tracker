@@ -1,5 +1,8 @@
 /* Outreach Tracker — screens. Phase 2: sign-in, people, centers. Phase 3: meetings, attendance, participants.
-   Phase 4: dashboard, follow-up, statistics, message templates, a child's history. */
+   Phase 4: dashboard, follow-up, statistics, message templates, a child's history.
+   Phase 5: notifications, reminders. Phase 6: jobs handed over (delegation), decision kinds, the combined report,
+   one start-up request, remembered screens, the LivingSeed look.
+   Phase 7: works without internet (downloaded list, saves wait and are sent later), message all children, CSV download. */
 (function () {
   'use strict';
   var Api = window.Api, Auth = window.Auth;
@@ -16,6 +19,12 @@
     followup: '<svg viewBox="0 0 24 24"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2"/></svg>',
     stats: '<svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/></svg>',
     participants: '<svg viewBox="0 0 24 24"><circle cx="12" cy="7.5" r="3.5"/><path d="M5 20.5c.8-4 3.6-6 7-6s6.2 2 7 6"/></svg>',
+    reports: '<svg viewBox="0 0 24 24"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5M10 13h6M10 17h6"/></svg>',
+    job_report: '<svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4M16 3v4M8.5 13.5l2.5 2.5 4.5-5"/></svg>',
+    job_followup: '<svg viewBox="0 0 24 24"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2"/></svg>',
+    job_children: '<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M3 20c.6-3.6 3-5.5 6-5.5s5.4 1.9 6 5.5M18 8v6M15 11h6"/></svg>',
+    msg: '<svg viewBox="0 0 24 24"><path d="M4 5h16v11H8l-4 4z"/><path d="M8 9h8M8 12h5"/></svg>',
+    bell: '<svg viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 0112 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 004 0"/></svg>',
     more: '<svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>'
   };
 
@@ -79,7 +88,7 @@
     if (location.hash) history.replaceState(null, '', location.pathname + location.search);   // next sign-in opens on Home
     var pin = true;   // the server refuses if PIN sign-in is switched off
     root.innerHTML =
-      '<div class="login"><div class="login-head"><div class="mark">OT</div><h1>Outreach Tracker</h1><p>Sign in to continue</p></div>' +
+      '<div class="login"><div class="login-head"><img src="img/logo-256.png" alt="LivingSeed" width="112" height="112"><h1>Outreach Tracker</h1><p>Sign in to continue</p></div>' +
       '<div class="login-body">' +
         '<div class="error" id="login-msg" role="alert">' + h(message || '') + '</div>' +
         (Auth.googleAvailable() ? '<div id="gbtn"></div><p class="small muted center" style="margin-top:8px">Use the Google account your coordinator registered.</p><div class="or">or</div>' : '') +
@@ -134,18 +143,33 @@
   }
 
   function showSetupNeeded() {
-    root.innerHTML = '<div class="login"><div class="login-head"><div class="mark">OT</div><h1>Outreach Tracker</h1><p>Almost ready</p></div>' +
+    root.innerHTML = '<div class="login"><div class="login-head"><img src="img/logo-256.png" alt="LivingSeed" width="112" height="112"><h1>Outreach Tracker</h1><p>Almost ready</p></div>' +
       '<div class="login-body"><div class="card"><h2>The app is not connected yet</h2>' +
       '<p>Open <code>config.js</code> and paste your Apps Script web app URL into <code>API_URL</code>. The deployment guide has the steps.</p></div></div></div>';
   }
 
   /* ---------- shell ---------- */
+  /** Jobs handed to me (delegation tasks), by kind. */
+  function jobsOf(kind) { return (me.jobs || []).filter(function (j) { return j.kind === kind; }); }
+  /** Centers where I may do this job: my own (if my role records) plus those handed to me. */
+  function jobCenters(kind) {
+    var out = me.can.record ? me.centers.filter(function (c) { return c.status === 'active'; }).slice() : [];
+    jobsOf(kind).forEach(function (j) {
+      if (!out.some(function (c) { return c.center_id === j.center_id; })) out.push({ center_id: j.center_id, name: j.center, program_id: j.program_id, status: 'active', handed: true });
+    });
+    return out;
+  }
   function tabsFor() {
-    if (!me.can.record) return [['home', 'Home'], ['meetings', 'Meetings'], ['stats', 'Statistics'], ['more', 'More']];
-    return [['home', 'Home'], ['meetings', 'Meetings'], ['followup', 'Follow-up'], ['participants', 'Children'], ['more', 'More']];
+    var t = [['home', 'Home'], ['meetings', 'Meetings']];
+    if (me.can.record || jobsOf('followup').length) t.push(['followup', 'Follow-up']);
+    if (me.can.record || jobsOf('children').length) t.push(['participants', 'Children']);
+    if (!me.can.record) t.push(['reports', 'Reports']);
+    if (t.length < 5 && !me.can.record) t.push(['stats', 'Statistics']);
+    t.push(['more', 'More']);
+    return t.slice(0, 6);
   }
   /** Pages that exist without a tab of their own, and the tab that lights up for them. */
-  var EXTRA = { centers: 'more', take: 'meetings', people: 'more', stats: 'more', templates: 'more' };
+  var EXTRA = { centers: 'more', take: 'meetings', people: 'more', stats: 'more', templates: 'more', tasks: 'more', reminders: 'more', notifications: 'home', reports: 'more', sync: 'more' };
   var VIEWS = {};
   var leaveGuard = null;          // set by a screen with unsaved changes; returns true if it is fine to leave
   var currentHash = '';
@@ -153,9 +177,10 @@
     var parts = (location.hash.replace(/^#\/?/, '') || 'home').split('/');
     var tabs = tabsFor(), page = parts[0];
     var allowed = tabs.some(function (t) { return t[0] === page; }) ||
-      (page === 'centers' && me.can.manage_centers) || (page === 'take' && me.can.record) ||
+      (page === 'centers' && me.can.manage_centers) || (page === 'take' && (me.can.record || jobsOf('report').length)) ||
       (page === 'people' && (me.can.manage_users || me.user.role === 'ASSISTANT')) ||
-      (page === 'stats') || (page === 'templates' && me.can.record);
+      page === 'stats' || page === 'reports' || page === 'sync' || (page === 'templates' && (me.can.record || jobsOf('followup').length)) || page === 'tasks' || page === 'notifications' ||
+      (page === 'reminders' && me.can.remind);
     if (!allowed) { page = 'home'; parts = ['home']; }
     var tab = tabs.some(function (t) { return t[0] === page; }) ? page : (EXTRA[page] || page);
     return { page: page, args: parts.slice(1), tab: tab, tabs: tabs };
@@ -165,76 +190,203 @@
     leaveGuard = null;
     currentHash = location.hash;
     root.innerHTML =
-      '<header class="top"><strong>' + h(me.org_name) + '</strong><span class="chip">' + h(ROLE[me.user.role]) + '</span></header>' +
+      '<header class="top"><a class="brand" href="#/home" aria-label="Outreach Tracker, home"><img src="img/logo-96.png" alt="" width="34" height="34"><strong>Outreach Tracker</strong></a>' +
+      '<a class="sync-pill" href="#/sync" hidden></a><span class="chip">' + h(ROLE[me.user.role]) + '</span>' +
+      '<a class="bell" href="#/notifications" aria-label="Notifications' + (me.unread ? ', ' + me.unread + ' new' : '') + '">' + ICON.bell +
+      (me.unread ? '<span class="dotn">' + (me.unread > 9 ? '9+' : me.unread) + '</span>' : '') + '</a></header>' +
       '<main id="view"></main>' +
       '<nav class="tabs" aria-label="Main">' + r.tabs.map(function (t) {
         return '<a class="tab" href="#/' + t[0] + '"' + (t[0] === r.tab ? ' aria-current="page"' : '') + '>' + ICON[t[0]] + '<span>' + t[1] + '</span></a>';
       }).join('') + '</nav>';
-    document.title = me.org_name;
+    document.title = 'Outreach Tracker';
+    syncPill();
     VIEWS[r.page]($('#view'), r.args);
     window.scrollTo(0, 0);
   }
   function go(hash) { if (location.hash === hash) render(); else location.hash = hash; }
-  function refreshMe() { return Api.call('me').then(function (d) { me = d; }); }
   function fail(e) { busy(false); if (me) toast(e.message, true); }
+
+  /* ---------- remembered screens ---------- */
+  function skeleton(n) { var x = '<div class="skel"><i class="s"></i>'; for (var i = 0; i < (n || 4); i++) x += '<i></i>'; return x + '</div>'; }
+  function ckey(name) { return (me ? me.user.user_id : '') + '|' + name; }
+  /**
+   * Draws a screen from its last remembered answer at once (if any), then from the server's fresh answer
+   * when it differs. draw(data) must rebuild the screen completely.
+   */
+  function paint(el, name, fetch, draw) {
+    var key = ckey(name), old = Api.store.get(key), seen = old ? JSON.stringify(old) : '';
+    if (old) { try { draw(old, true); } catch (e) { old = null; } }
+    if (!old) el.innerHTML = skeleton();
+    return fetch().then(function (fresh) {
+      Api.store.set(key, fresh);
+      if (!el.isConnected || JSON.stringify(fresh) === seen) return;
+      draw(fresh, false);
+    }).catch(function (e) {
+      if (old) { if (e.code !== 'OFFLINE') toast(e.message, true); return; }
+      el.innerHTML = '<div class="card"><p class="error">' + h(e.message) + '</p><button class="btn ghost block" type="button" data-retry>Try again</button></div>';
+      $('[data-retry]', el).onclick = function () { paint(el, name, fetch, draw); };
+    });
+  }
+  /** One request for who I am and everything Home shows. */
+  var homeData = null;
+  function boot() {
+    return Api.call('boot', { app_url: location.origin + location.pathname }).then(function (d) {
+      me = d.me; homeData = d.home; Api.store.set('boot', d); Sync.setUser(me.user.user_id);
+      setTimeout(function () { Sync.flush().then(function () { downloadPack(false); }); }, 300);
+      return d;
+    });
+  }
+
+  /* ---------- working without internet ---------- */
+  function onOwnPhone() { return !Auth.isShared(); }
+  function canWorkOffline() { return me && (me.can.record || (me.jobs || []).length); }
+  /**
+   * Downloads the children of my centers, the open meetings with their reports so far and the follow-up list,
+   * so attendance and follow-up work with no signal. Only on the person's own phone; at most every 10 minutes unless asked.
+   */
+  var packing = null;
+  function downloadPack(force) {
+    if (!me || !onOwnPhone() || !canWorkOffline() || !navigator.onLine) return Promise.resolve(null);
+    var old = Api.store.get(ckey('pack'));
+    if (!force && old && Date.now() - new Date(old.at).getTime() < 600000) return Promise.resolve(old);
+    if (packing) return packing;
+    packing = Api.call('offlinePack').then(function (pk) {
+      Api.store.set(ckey('pack'), pk);
+      Object.keys(pk.participants).forEach(function (cid) { Api.store.set(ckey('participants|' + cid), { participants: pk.participants[cid] }); });
+      if (pk.meetings && pk.meetings.length) Api.store.set(ckey('meetings'), { meetings: pk.meetings });
+      if (pk.followups) {
+        Api.store.set(ckey('followups|'), [pk.followups, pk.templates]);
+        jobCenters('followup').forEach(function (c) {
+          Api.store.set(ckey('followups|' + c.center_id), [{ items: pk.followups.items.filter(function (x) { return x.center_id === c.center_id; }),
+            birthdays: pk.followups.birthdays.filter(function (x) { return x.center_id === c.center_id; }), inactivity_meetings: pk.followups.inactivity_meetings }, pk.templates]);
+        });
+        if (pk.templates) templatesCache = pk.templates;
+      }
+      packing = null; syncPill(); return pk;
+    }).catch(function () { packing = null; return null; });
+    return packing;
+  }
+  function syncPill() {
+    var pill = $('.sync-pill'); if (!pill) return;
+    var waiting = Sync.waiting(), failed = Sync.failed(), off = !navigator.onLine;
+    pill.hidden = !(off || waiting || failed);
+    pill.className = 'sync-pill' + (failed ? ' bad' : off ? ' off' : '');
+    pill.textContent = failed ? failed + ' not sent' : waiting ? (off ? 'Offline · ' : '') + waiting + ' to send' : 'Offline';
+  }
+  Sync.on(function (info) {
+    syncPill();
+    if (info && info.sent) {
+      toast(info.sent === 1 ? '1 save sent' : info.sent + ' saves sent');
+      boot().then(function () { downloadPack(true); if (route().page === 'home' || route().page === 'sync') render(); }).catch(function () {});
+    }
+    if (route && me && route().page === 'sync') VIEWS.sync($('#view'));
+  });
+  window.addEventListener('online', syncPill);
+  window.addEventListener('offline', syncPill);
+
+  /** The attendance screen built from the downloaded list, when the server cannot be reached. */
+  function offlineSession(meetingId, centerId) {
+    var pk = Api.store.get(ckey('pack')), x = pk && pk.sessions[meetingId + '|' + centerId];
+    if (!x) return null;
+    var marked = {}; (x.marked || []).forEach(function (id) { marked[id] = true; });
+    var d = JSON.parse(JSON.stringify(x));
+    d.participants = (pk.participants[centerId] || []).filter(function (r) { return marked[r.participant_id] || r.status === 'active'; })
+      .map(function (r) { var o = JSON.parse(JSON.stringify(r)); o.joined_after = !marked[r.participant_id] && !!r.join_date && r.join_date > x.meeting.date; return o; })
+      .sort(function (a, b) { return a.name.localeCompare(b.name); });
+    d.offline = true;
+    return d;
+  }
+  /** A save of this report still waiting on the phone: show it on top of what the server last knew. */
+  function withPending(d) {
+    var q = Sync.find('session|' + d.meeting.meeting_id + '|' + d.center.center_id);
+    if (!q) return d;
+    var p = q.payload;
+    d = JSON.parse(JSON.stringify(d));
+    d.pending = p;
+    d.attendance = p.attendance.map(function (a) { return { participant_id: a.participant_id, present: a.present, first_timer: false }; });
+    d.decisions = p.decisions.filter(function (x) { return String(x.participant_id).indexOf('new') !== 0; });
+    d.custom_decisions = p.custom_decisions;
+    d.session = Object.assign({}, d.session || {}, { facilitators: p.facilitators, start_time: p.start_time, punctuality: p.punctuality,
+      observations: p.observations, recommendations: p.recommendations, status: p.submit ? 'submitted' : ((d.session || {}).status || 'draft') });
+    return d;
+  }
+  function refreshMe() { return boot(); }
 
   /* ---------- home ---------- */
   function tile(n, label, sub) {
     return '<div class="tile"><span class="n">' + h(n) + '</span><span class="l">' + h(label) + '</span>' + (sub ? '<span class="s">' + h(sub) + '</span>' : '') + '</div>';
   }
+  var JOB_VERB = { report: 'Take attendance and submit', followup: 'Open the follow-up list', children: 'Open the children list' };
+  function jobCard(j) {
+    return '<div class="card job' + (j.overdue ? ' late' : '') + '"><span class="ic">' + ICON['job_' + j.kind] + '</span><div class="grow">' +
+      '<h2>' + h(j.title) + '</h2><p class="small muted">From ' + h(j.from) + (j.due_date ? ', by ' + h(fmtDate(j.due_date)) : '') + '</p>' +
+      (j.overdue ? '<span class="badge bad">Overdue</span>' : '') + (j.note ? '<p class="small" style="margin-top:6px">' + h(j.note) + '</p>' : '') +
+      '<button type="button" class="btn block" data-job="' + h(j.task_id) + '">' + JOB_VERB[j.kind] + '</button></div></div>';
+  }
+  function openJob(j) {
+    if (j.kind === 'report') return go('#/take/' + j.meeting_id + '/' + j.center_id);
+    if (j.kind === 'followup') { fState.center = j.center_id; return go('#/followup'); }
+    pState.center = j.center_id; pState.show = 'active'; go('#/participants');
+  }
+  function wireJobs(el) {
+    $all('[data-job]', el).forEach(function (b) {
+      b.onclick = function () { openJob((me.jobs || []).filter(function (j) { return j.task_id === b.dataset.job; })[0]); };
+    });
+  }
   function viewHome(el) {
-    var first = me.user.name.split(' ')[0];
-    el.innerHTML =
-      '<div><h1>Hello, ' + h(first) + '</h1><p class="muted">' + h(ROLE[me.user.role]) + (me.scope.all ? ' · all programs' : '') + '</p></div>' +
-      (Auth.isShared() ? '<div class="card" style="background:var(--warn-soft);border-color:#ecd98f"><strong>Borrowed phone</strong><p class="small">You will be signed out when you close the app. Tap More → Sign out when you finish.</p></div>' : '') +
-      '<div id="home-follow"></div><div id="home-meeting"><div class="boot" style="min-height:20vh"><div class="spinner"></div></div></div><div id="home-stats"></div>';
-    if (!me.programs.length) {
-      $('#home-meeting').innerHTML = '<div class="card"><p class="muted">No program or center is assigned to you yet. Ask your coordinator.</p></div>';
+    var first = me.user.name.split(' ')[0], H = homeData || {}, today = me.today || new Date().toISOString().slice(0, 10);
+    var tm = H.stats && H.stats.this_month;
+    var monthName = new Date(today.slice(0, 7) + '-15T12:00:00Z').toLocaleDateString('en-GB', { month: 'long', timeZone: 'UTC' });
+    var html =
+      '<section class="band"><h1>Hello, ' + h(first) + '</h1><p class="sub">' + h(ROLE[me.user.role]) + (me.scope.all ? ', all programs' : '') + '</p>' +
+      (tm ? '<div class="nums"><div><b>' + tm.present + '</b><span>present</span></div><div><b>' + tm.first_timers + '</b><span>new</span></div>' +
+        '<div><b>' + tm.decisions + '</b><span>decisions</span></div><div><b>' + tm.absentees + '</b><span>absent</span></div></div>' +
+        '<p class="month">' + h(monthName) + ' so far, ' + tm.reports + (tm.reports === 1 ? ' report' : ' reports') + '</p>' : '') + '</section>';
+    if (Auth.isShared()) html += '<div class="card alert-card"><span class="grow"><strong>Borrowed phone</strong><br><span class="small">You will be signed out when you close the app. Tap More, then Sign out, when you finish.</span></span></div>';
+    if ((me.jobs || []).length) html += '<h3>Handed to you</h3>' + me.jobs.map(jobCard).join('');
+    if (H.followups && (H.followups.count || H.followups.birthdays)) {
+      var n = H.followups.count, b = H.followups.birthdays;
+      html += '<a class="card alert-card" href="#/followup"><span class="grow"><strong>' + (n ? n + (n === 1 ? ' child needs' : ' children need') + ' a follow-up' : 'Follow-up') + '</strong>' +
+        (b ? '<br><span class="small">' + b + (b === 1 ? ' birthday' : ' birthdays') + ' coming up</span>' : '') + '</span><span aria-hidden="true">›</span></a>';
+    }
+    var others = (H.tasks || []).filter(function (t) { return !t.kind; });
+    if (others.length) html += '<div class="head"><h3>Other tasks</h3><a class="small" href="#/tasks">All tasks</a></div><div class="list">' + others.slice(0, 4).map(taskRow).join('') + '</div>';
+    html += '<div id="home-meeting"></div>';
+    var last = H.stats ? H.stats.trend : [];
+    if (last && last.length) html += '<section class="card"><h2>Attendance, last ' + last.length + (last.length === 1 ? ' meeting' : ' meetings') + '</h2>' +
+      barChart({ id: 'home-trend', labels: last.map(function (b) { return shortDate(b.date); }), full: last.map(function (b) { return fmtDate(b.date); }),
+        series: [{ name: 'Returning', color: 'var(--s1)', values: last.map(function (b) { return b.returning; }) },
+                 { name: 'First-timers', color: 'var(--s2)', values: last.map(function (b) { return b.first_timers; }) }] }) +
+      '<a class="btn ghost block" href="#/stats" style="margin-top:12px">All statistics</a></section>';
+    el.innerHTML = html;
+    wireJobs(el); wireTaskRows(el); wireCharts(el);
+    var box = $('#home-meeting', el), meetings = H.meetings || [];
+    if (!me.programs.length) { box.innerHTML = (me.jobs || []).length ? '' : '<div class="card"><p class="muted">No program or center is assigned to you yet. Ask your coordinator.</p></div>'; return; }
+    var open = meetings.filter(function (m) { return m.status !== 'closed'; });
+    var m = open.filter(function (x) { return x.date <= today; })[0] || open[open.length - 1] || meetings[0];
+    if (!m) {
+      box.innerHTML = '<div class="card"><h2>No meetings yet</h2><p class="muted">' + (me.can.manage_meetings ? 'Create the next meeting so the centers can report on it.' : 'Your coordinator has not created a meeting yet.') + '</p>' +
+        (me.can.manage_meetings ? '<a class="btn block" href="#/meetings">Go to Meetings</a>' : '') + '</div>';
       return;
     }
-    var today = me.today || new Date().toISOString().slice(0, 10);
-    Api.call('listMeetings').then(function (r) {
-      var box = $('#home-meeting'); if (!box) return;
-      var open = r.meetings.filter(function (m) { return m.status !== 'closed'; });
-      var m = open.filter(function (x) { return x.date <= today; })[0] || open[open.length - 1] || r.meetings[0];
-      if (!m) {
-        box.innerHTML = '<div class="card"><h2>No meetings yet</h2><p class="muted">' + (me.can.manage_meetings ? 'Create the next meeting so the centers can report on it.' : 'Your coordinator has not created a meeting yet.') + '</p>' +
-          (me.can.manage_meetings ? '<a class="btn block" href="#/meetings">Go to Meetings</a>' : '') + '</div>';
-        return;
-      }
-      var missing = m.centers.filter(function (c) { return c.state !== 'submitted'; });
-      box.innerHTML = '<h3>' + (m.date > today ? 'Next meeting' : 'Latest meeting') + '</h3>' + meetingCard(m, true) +
-        (m.centers.length > 1 ? '<p class="small muted">' + (missing.length ? missing.length + ' of ' + m.centers.length + ' centers have not submitted yet: ' +
-          missing.map(function (c) { return h(c.name); }).join(', ') + '.' : 'Every center has submitted.') + '</p>' : '');
-      wireMeetingCards(box, r.meetings);
-    }).catch(function (e) { var box = $('#home-meeting'); if (box) box.innerHTML = '<div class="card"><p class="error">' + h(e.message) + '</p></div>'; });
-    if (me.can.record) Api.call('followUps').then(function (f) {
-      var box = $('#home-follow'); if (!box) return;
-      var n = f.items.length, b = f.birthdays.length;
-      if (!n && !b) return;
-      box.innerHTML = '<a class="card alert-card" href="#/followup"><span class="grow"><strong>' + (n ? n + (n === 1 ? ' child needs' : ' children need') + ' a follow-up' : 'Follow-up') + '</strong>' +
-        (b ? '<br><span class="small">' + b + (b === 1 ? ' birthday' : ' birthdays') + ' coming up</span>' : '') + '</span><span aria-hidden="true">›</span></a>';
-    }).catch(function () {});
-    Api.call('stats', { months: 6 }).then(function (st) {
-      var box = $('#home-stats'); if (!box) return;
-      var tm = st.this_month, monthName = new Date(tm.month + '-15T12:00:00Z').toLocaleDateString('en-GB', { month: 'long', timeZone: 'UTC' });
-      var last = st.trend.slice(-6);
-      box.innerHTML = '<h3>' + h(monthName) + ' so far</h3>' +
-        '<div class="tiles">' + tile(tm.present, 'present', tm.reports + (tm.reports === 1 ? ' report' : ' reports')) + tile(tm.first_timers, 'first-timers') +
-        tile(tm.decisions, 'decisions') + tile(tm.absentees, 'absentees', 'children absent at least once') + '</div>' +
-        (last.length ? '<section class="card"><div class="head"><h2>Attendance, last ' + last.length + (last.length === 1 ? ' meeting' : ' meetings') + '</h2></div>' +
-          barChart({ id: 'home-trend', labels: last.map(function (b) { return shortDate(b.date); }), full: last.map(function (b) { return fmtDate(b.date); }),
-            series: [{ name: 'Returning', color: 'var(--s1)', values: last.map(function (b) { return b.returning; }) },
-                     { name: 'First-timers', color: 'var(--s2)', values: last.map(function (b) { return b.first_timers; }) }] }) +
-          '<a class="btn ghost block" href="#/stats" style="margin-top:12px">All statistics</a></section>' : '');
-      wireCharts(box);
-    }).catch(function () {});
+    var missing = m.centers.filter(function (c) { return c.state !== 'submitted'; });
+    box.innerHTML = '<h3>' + (m.date > today ? 'Next meeting' : 'Latest meeting') + '</h3>' + meetingCard(m, true) +
+      (m.centers.length > 1 ? '<p class="small muted" style="margin-top:8px">' + (missing.length ? missing.length + ' of ' + m.centers.length + ' centers have not submitted yet: ' +
+        missing.map(function (c) { return h(c.name); }).join(', ') + '.' : 'Every center has submitted.') + '</p>' : '') +
+      '<div class="stack" style="margin-top:10px">' + (missing.length && me.can.remind && m.date <= today ? '<a class="btn ghost block" href="#/reminders/' + h(m.meeting_id) + '">Remind the centers that have not submitted</a>' : '') +
+      (m.date <= today && m.centers.some(function (c) { return c.state === 'submitted'; }) ? '<a class="btn quiet block" href="#/reports/' + h(m.meeting_id) + '">Combined report</a>' : '') + '</div>';
+    wireMeetingCards(box, meetings);
+  }
+  /** Home appears at once from what was remembered, then refreshes. */
+  function homeFresh() {
+    return boot().then(function () {
+      if (route().page === 'home' && !document.querySelector('dialog[open]')) render();
+    }).catch(function (e) { if (e.code === 'OFFLINE') toast('No connection. Showing what was saved on this phone.', true); });
   }
 
   /* ---------- people ---------- */
   function viewPeople(el) {
-    el.innerHTML = '<div class="boot" style="min-height:40vh"><div class="spinner"></div></div>';
-    Api.call('listUsers').then(function (list) {
+    paint(el, 'users', function () { return Api.call('listUsers'); }, function (list) {
       users = list.sort(function (a, b) { return ROLE_ORDER.indexOf(a.role) - ROLE_ORDER.indexOf(b.role) || a.name.localeCompare(b.name); });
       el.innerHTML = '<a href="#/more" class="small">‹ More</a><div class="head"><h1>Team</h1></div>' +
         '<p class="muted small">' + (me.can.manage_users ? 'People who can sign in. Tap a name to edit, reset a PIN or switch access off.' : 'The team of your center.') + '</p>' +
@@ -244,7 +396,7 @@
         r.onclick = function () { userActions(users.filter(function (u) { return u.user_id === r.dataset.id; })[0]); };
       });
       if (me.can.manage_users) $('#add-user').onclick = function () { userForm(null); };
-    }).catch(fail);
+    });
   }
   var ROLE_ORDER = ['SUPER_ADMIN', 'COORDINATOR', 'LEADER', 'ASSISTANT', 'VIEWER'];
   function userScopeText(u) {
@@ -427,13 +579,16 @@
       (m.status === 'closed' ? '<span class="badge off">Closed</span>' : '') +
       (m.can_manage && !compact ? '<button type="button" class="btn quiet mini" data-manage>Manage</button>' : '') + '</div>' +
       (m.centers.length ? '<div class="list">' + m.centers.map(function (c) {
-        var st = STATE[c.state] || STATE.none, tap = me.can.record;
-        var label = c.state === 'none' ? (canTake ? 'Take attendance' : st[0]) : st[0];
+        var handed = jobsOf('report').some(function (j) { return j.meeting_id === m.meeting_id && j.center_id === c.center_id; });
+        var st = STATE[c.state] || STATE.none, tap = me.can.record || handed;
+        var label = c.state === 'none' ? (canTake || handed ? 'Take attendance' : st[0]) : st[0];
         return '<' + (tap ? 'button type="button"' : 'div') + ' class="row' + (tap ? '' : ' static') + '" data-take="' + h(c.center_id) + '">' +
           '<span class="grow"><span class="name">' + h(c.name) + '</span>' +
           (c.state !== 'none' ? '<br><span class="sub">' + c.total_present + ' present' + (c.total_first_timers ? ' · ' + c.total_first_timers + ' new' : '') + '</span>' : '') + '</span>' +
           '<span class="badge ' + st[1] + '">' + h(label) + '</span></' + (tap ? 'button' : 'div') + '>';
       }).join('') + '</div>' : '<p class="muted small">No centers of yours take part in this meeting.</p>') +
+      (!compact && m.date <= (me.today || '9') && m.centers.some(function (c) { return c.state === 'submitted'; }) ?
+        '<a class="btn quiet block" href="#/reports/' + h(m.meeting_id) + '" style="margin-top:12px">Combined report</a>' : '') +
       '</div>';
   }
   function wireMeetingCards(el, meetings) {
@@ -444,8 +599,7 @@
     });
   }
   function viewMeetings(el) {
-    el.innerHTML = '<div class="boot" style="min-height:40vh"><div class="spinner"></div></div>';
-    Api.call('listMeetings').then(function (r) {
+    paint(el, 'meetings', function () { return Api.call('listMeetings'); }, function (r) {
       el.innerHTML = '<div class="head"><h1>Meetings</h1></div>' +
         '<p class="muted small">' + (me.can.record ? 'Tap a center to take or correct its attendance.' : 'Which centers have reported.') + '</p>' +
         (r.meetings.length ? r.meetings.map(function (m) { return meetingCard(m, false); }).join('')
@@ -453,7 +607,7 @@
         (me.can.manage_meetings ? '<button class="btn fab" id="add-meeting">+ New meeting</button>' : '');
       wireMeetingCards(el, r.meetings);
       if (me.can.manage_meetings) $('#add-meeting').onclick = function () { meetingForm(null); };
-    }).catch(fail);
+    });
   }
   function meetingForm(m) {
     var progs = me.programs.filter(function (p) { return p.status === 'active' && (me.scope.all || me.scope.full_program_ids.indexOf(p.program_id) !== -1); });
@@ -473,6 +627,7 @@
     var started = m.centers.some(function (c) { return c.state !== 'none'; });
     var d = sheet(m.theme, '<p class="muted">' + h(fmtDate(m.date)) + '</p><div class="stack" style="margin-top:16px">' +
       '<button type="button" class="btn quiet block" data-a="edit">Edit date, theme or scripture</button>' +
+      (me.can.remind && m.centers.some(function (c) { return c.state !== 'submitted'; }) ? '<button type="button" class="btn ghost block" data-a="remind">Remind centers that have not submitted</button>' : '') +
       (m.status === 'closed' ? '<button type="button" class="btn ghost block" data-a="open">Reopen for corrections</button>'
         : '<button type="button" class="btn quiet block" data-a="close">Close the meeting</button><p class="small muted">Leaders and assistants can correct their report until you close it.</p>') +
       (!started ? '<button type="button" class="btn danger block" data-a="del">Delete this meeting</button>' : '') + '</div>');
@@ -480,6 +635,7 @@
       b.onclick = function () {
         var a = b.dataset.a; d.close();
         if (a === 'edit') return meetingForm(m);
+        if (a === 'remind') return go('#/reminders/' + m.meeting_id);
         if (a === 'del' && !confirm('Delete the meeting of ' + fmtDate(m.date) + '?')) return;
         if (a === 'close' && !confirm('Close this meeting? Leaders can no longer change their reports.')) return;
         busy(true);
@@ -493,8 +649,17 @@
   var DECISION = { salvation: 'Salvation', rededication: 'Rededication', commitment_to_grow: 'Commitment to grow' };
   function viewTake(el, args) {
     var meetingId = args[0], centerId = args[1];
-    el.innerHTML = '<div class="boot" style="min-height:40vh"><div class="spinner"></div></div>';
-    Api.call('getSession', { meeting_id: meetingId, center_id: centerId }).then(function (d) { takeScreen(el, d); }).catch(function (e) {
+    el.innerHTML = skeleton();
+    var fromPhone = function (e) {
+      var d = offlineSession(meetingId, centerId);
+      if (d) return takeScreen(el, withPending(d));
+      el.innerHTML = '<div class="card"><p class="error">' + h(e ? e.message : 'No connection.') + '</p>' +
+        (e && e.code === 'OFFLINE' ? '<p class="small muted">This report was not downloaded to this phone. Open the app once with internet to download it.</p>' : '') +
+        '<a class="btn ghost block" href="#/meetings">Back to meetings</a></div>';
+    };
+    if (!navigator.onLine) return fromPhone({ code: 'OFFLINE', message: 'No connection.' });
+    Api.call('getSession', { meeting_id: meetingId, center_id: centerId }).then(function (d) { takeScreen(el, withPending(d)); }).catch(function (e) {
+      if (e.code === 'OFFLINE') return fromPhone(e);
       el.innerHTML = '<div class="card"><p class="error">' + h(e.message) + '</p><a class="btn ghost block" href="#/meetings">Back to meetings</a></div>';
     });
   }
@@ -502,11 +667,22 @@
     var s = d.session || {}, ro = !d.editable, dirty = false, newId = 0, filter = '';
     var present = {}, firsts = {}, decisions = {}, newcomers = [];
     d.attendance.forEach(function (a) { if (a.present) present[a.participant_id] = true; if (a.first_timer) firsts[a.participant_id] = true; });
-    d.decisions.forEach(function (x) { decisions[x.participant_id] = x.type; });
+    // A decision is kept as its kind: a standard one ('salvation') or one added for this report ('other:Baptism class').
+    var kinds = (d.custom_decisions || []).slice();
+    d.decisions.forEach(function (x) { decisions[x.participant_id] = x.type === 'other' ? 'other:' + x.label : x.type; });
+    function decName(k) { return k.indexOf('other:') === 0 ? k.slice(6) : DECISION[k]; }
     var marked = {};
     d.attendance.forEach(function (a) { marked[a.participant_id] = true; });
     var people = d.participants.filter(function (p) { return (p.status === 'active' || marked[p.participant_id]) && !p.joined_after; });
     var later = ro ? [] : d.participants.filter(function (p) { return p.status === 'active' && p.joined_after; });
+    if (d.pending) {
+      // First-timers added on the phone and not sent yet.
+      (d.pending.new_participants || []).forEach(function (n) {
+        newcomers.push(Object.assign({}, n, { participant_id: n.temp_id, _new: true, status: 'active' })); present[n.temp_id] = true;
+        newId = Math.max(newId, Number(String(n.temp_id).replace(/\D/g, '')) || 0);
+      });
+      (d.pending.decisions || []).forEach(function (x) { if (String(x.participant_id).indexOf('new') === 0) decisions[x.participant_id] = x.type === 'other' ? 'other:' + x.label : x.type; });
+    }
 
     function mark() { dirty = true; }
     leaveGuard = function () { return !dirty || confirm('You have changes that are not saved. Leave without saving?'); };
@@ -518,6 +694,8 @@
       (d.meeting.scripture ? '<p class="muted">' + h(d.meeting.scripture) + '</p>' : '') +
       '<p style="margin-top:6px">' + (s.status === 'submitted' ? '<span class="badge">Submitted</span>' : s.status === 'draft' ? '<span class="badge warn">Draft — not sent yet</span>' : '') +
       (ro ? '<span class="badge off">Closed — read only</span>' : '') + '</p></div>' +
+      (d.pending ? '<div class="card alert-card"><span class="grow"><strong>Saved on this phone, not sent yet</strong><br><span class="small">It is sent by itself when the phone is online. You can keep correcting it.</span></span></div>'
+        : d.offline ? '<div class="card alert-card"><span class="grow"><strong>No connection</strong><br><span class="small">Working from the list downloaded to this phone. Your save waits here and is sent when you are online.</span></span></div>' : '') +
 
       '<section class="card"><div class="head"><h2>Attendance</h2><span class="count" id="count"></span></div>' +
       (people.length > 8 ? '<input type="search" id="find" placeholder="Find a name" autocomplete="off">' : '') +
@@ -545,7 +723,7 @@
         '<button type="button" class="tick" aria-pressed="' + on + '"' + (ro ? ' disabled' : '') + '><span class="box" aria-hidden="true"></span>' +
         '<span class="grow"><span class="name">' + h(p.name) + '</span>' +
         (isNew ? ' <span class="badge warn">New</span>' : '') + (p.status === 'inactive' ? ' <span class="badge off">Inactive</span>' : '') +
-        (dec ? '<br><span class="badge dec">' + h(DECISION[dec]) + '</span>' : '') + '</span>' +
+        (dec ? '<br><span class="badge dec">' + h(decName(dec)) + '</span>' : '') + '</span>' +
         '<span class="state">' + (on ? 'Present' : 'Absent') + '</span></button>' +
         (on && !ro ? '<button type="button" class="btn quiet mini dec-btn" aria-label="Decision for ' + h(p.name) + '">' + (dec ? 'Change' : 'Decision') + '</button>' : '') +
         '</div>';
@@ -567,12 +745,27 @@
     }
     function decisionPicker(id) {
       var p = newcomers.concat(people).filter(function (x) { return x.participant_id === id; })[0];
-      var dlg = sheet('Decision — ' + p.name, '<div class="stack">' + Object.keys(DECISION).map(function (k) {
-        return '<button type="button" class="btn ' + (decisions[id] === k ? '' : 'quiet') + ' block" data-k="' + k + '">' + DECISION[k] + '</button>';
-      }).join('') + (decisions[id] ? '<button type="button" class="btn danger block" data-k="">Remove the decision</button>' : '') + '</div>');
+      var all = Object.keys(DECISION).concat(kinds.map(function (k) { return 'other:' + k; }));
+      var dlg = sheet('Decision for ' + p.name, '<div class="stack">' + all.map(function (k) {
+        return '<button type="button" class="btn ' + (decisions[id] === k ? '' : 'quiet') + ' block" data-k="' + h(k) + '">' + h(decName(k)) + '</button>';
+      }).join('') + (decisions[id] ? '<button type="button" class="btn danger block" data-k="">Remove the decision</button>' : '') + '</div>' +
+        '<h3 style="margin-top:18px">Another kind of decision</h3><p class="small muted">For this report only. Once added, it can be chosen for any child present today.</p>' +
+        '<div class="addkind"><input type="text" name="newkind" maxlength="40" placeholder="e.g. Baptism class" autocomplete="off"><button type="button" class="btn ghost" data-add>Add</button></div>');
       $all('[data-k]', dlg).forEach(function (b) {
         b.onclick = function () { if (b.dataset.k) decisions[id] = b.dataset.k; else delete decisions[id]; mark(); dlg.close(); draw(); };
       });
+      $('[data-add]', dlg).onclick = function () {
+        var v = dlg.querySelector('[name=newkind]').value.trim().replace(/\s+/g, ' '), err = $('.error', dlg);
+        if (v.length < 2) { err.textContent = 'Write the kind of decision (2 to 40 letters).'; return; }
+        var known = Object.keys(DECISION).map(function (k) { return DECISION[k].toLowerCase(); }).concat(kinds.map(function (k) { return k.toLowerCase(); }));
+        if (known.indexOf(v.toLowerCase()) === -1) {
+          if (kinds.length >= 10) { err.textContent = 'At most 10 extra kinds in one report.'; return; }
+          kinds.push(v);
+        } else v = kinds.filter(function (k) { return k.toLowerCase() === v.toLowerCase(); })[0] || v;
+        var std = Object.keys(DECISION).filter(function (k) { return DECISION[k].toLowerCase() === v.toLowerCase(); })[0];
+        decisions[id] = std || 'other:' + v; mark(); dlg.close(); draw();
+        toast('"' + v + '" added for this report');
+      };
     }
     var sl = $('#show-later', el);
     if (sl) sl.onclick = function () { people = people.concat(later).sort(function (a, b) { return a.name.localeCompare(b.name); }); later = []; $('#later-note', el).remove(); draw(); };
@@ -599,7 +792,7 @@
       var g = function (n) { var x = el.querySelector('[name=' + n + ']'); return x ? x.value : ''; };
       var punct = el.querySelector('[name=punctuality]:checked');
       var payload = {
-        meeting_id: d.meeting.meeting_id, center_id: d.center.center_id, submit: submit,
+        meeting_id: d.meeting.meeting_id, center_id: d.center.center_id, submit: submit || !!(d.pending && d.pending.submit),
         facilitators: g('facilitators'), start_time: g('start_time'), punctuality: punct ? punct.value : '',
         observations: g('observations'), recommendations: g('recommendations'),
         attendance: people.map(function (p) { return { participant_id: p.participant_id, present: !!present[p.participant_id] }; }),
@@ -607,19 +800,40 @@
           return { temp_id: p.temp_id, name: p.name, age: p.age, birth_date: p.birth_date, phone: p.phone, guardian_name: p.guardian_name,
             guardian_phone: p.guardian_phone, school: p.school, guardian_consent: p.guardian_consent };
         }),
-        decisions: Object.keys(decisions).map(function (id) { return { participant_id: id, type: decisions[id] }; })
+        custom_decisions: kinds.filter(function (k) { return Object.keys(decisions).some(function (id) { return decisions[id] === 'other:' + k; }); }),
+        decisions: Object.keys(decisions).map(function (id) {
+          var k = decisions[id];
+          return k.indexOf('other:') === 0 ? { participant_id: id, type: 'other', label: k.slice(6) } : { participant_id: id, type: k };
+        })
       };
+      if (submit) {   // the same checks the server makes, so a report saved offline is not refused later
+        if (!payload.facilitators.trim()) { err.textContent = 'Enter who facilitated the meeting.'; return; }
+        if (!payload.start_time) { err.textContent = 'Enter the time the meeting started.'; return; }
+        if (!payload.punctuality) { err.textContent = 'Say whether the meeting started on time or late.'; return; }
+      }
+      var key = 'session|' + d.meeting.meeting_id + '|' + d.center.center_id;
+      var keepOnPhone = function () {
+        if (!onOwnPhone() && !confirm('You are on a borrowed phone. The report waits on this phone until it is online; do not close the app before it is sent. Keep it?')) return;
+        Sync.add('saveSession', payload, d.center.name + ' report, ' + fmtDate(d.meeting.date) + (payload.submit ? '' : ' (draft)'), key);
+        dirty = false;
+        toast('Saved on this phone. It is sent when you are online.');
+        var again = JSON.parse(JSON.stringify(d)); again.pending = payload; delete again.offline;
+        takeScreen(el, withPending(again)); window.scrollTo(0, 0);
+      };
+      if (!navigator.onLine) return keepOnPhone();
       $all('.savebar .btn', el).forEach(function (b) { b.disabled = true; });
       busy(true);
+      if (d.pending) Sync.remove(Sync.find(key).id);   // this save replaces the one waiting
       return Api.call('saveSession', payload).then(function (fresh) {
         busy(false); dirty = false;
         toast(submit && s.status !== 'submitted' ? 'Report submitted' : 'Saved');
         takeScreen(el, fresh);
         window.scrollTo(0, 0);
       }).catch(function (e) {
-        busy(false); err.textContent = e.message; err.scrollIntoView({ block: 'center' });
+        busy(false);
         $all('.savebar .btn', el).forEach(function (b) { b.disabled = false; });
-        if (e.code === 'OFFLINE') err.textContent += ' Your marks are still on this screen; do not close it.';
+        if (e.code === 'OFFLINE') return keepOnPhone();
+        err.textContent = e.message; err.scrollIntoView({ block: 'center' });
       });
     }
     if (!ro) {
@@ -634,17 +848,17 @@
 
   /* ---------- participants ---------- */
   var pState = { center: '', q: '', show: 'active' };
-  function recordCenters() { return me.centers.filter(function (c) { return c.status === 'active'; }); }
+  function recordCenters(kind) { return jobCenters(kind || 'children'); }
   function viewParticipants(el) {
-    var centers = recordCenters();
+    var centers = recordCenters('children');
     if (!pState.center || !centers.some(function (c) { return c.center_id === pState.center; })) pState.center = centers.length ? centers[0].center_id : '';
-    el.innerHTML = '<div class="boot" style="min-height:40vh"><div class="spinner"></div></div>';
     if (!centers.length) { el.innerHTML = '<h1>Children</h1><div class="card empty">No active center is assigned to you.</div>'; return; }
-    Api.call('listParticipants', { center_id: pState.center }).then(function (r) {
+    paint(el, 'participants|' + pState.center, function () { return Api.call('listParticipants', { center_id: pState.center }); }, function (r) {
       var list = r.participants.sort(function (a, b) { return a.name.localeCompare(b.name); });
       var counts = { active: 0, inactive: 0, incomplete: 0 };
       list.forEach(function (p) { counts[p.status]++; if (p.incomplete || !p.guardian_consent) counts.incomplete++; });
-      el.innerHTML = '<div class="head"><h1>Children</h1><button class="btn ghost mini" id="import">Import CSV</button></div>' +
+      el.innerHTML = '<div class="head"><h1>Children</h1><div><button class="btn mini" id="msg-all">' + ICON.msg + ' Message all</button> ' +
+        '<button class="btn ghost mini" id="import">Import CSV</button></div></div>' +
         (centers.length > 1 ? '<label class="field" style="margin-top:0">Center<select id="pc">' + centers.map(function (c) {
           return '<option value="' + h(c.center_id) + '"' + (c.center_id === pState.center ? ' selected' : '') + '>' + h(centerLabel(c)) + '</option>'; }).join('') + '</select></label>' : '') +
         '<div class="seg small-seg">' + [['active', 'Active ' + counts.active], ['inactive', 'Inactive ' + counts.inactive], ['incomplete', 'To complete ' + counts.incomplete]].map(function (x) {
@@ -679,8 +893,10 @@
         });
       };
       $('#import', el).onclick = function () { importDialog(pState.center); };
+      $('#msg-all', el).onclick = function () { messageAll(pState.center, list.filter(function (p) { return p.status === 'active'; })); };
+      if (!jobCenters('followup').some(function (c) { return c.center_id === pState.center; })) $('#msg-all', el).hidden = true;
       draw();
-    }).catch(fail);
+    });
   }
 
   /**
@@ -909,7 +1125,11 @@
   var templatesCache = null;
   function loadTemplates() {
     if (templatesCache) return Promise.resolve(templatesCache);
-    return Api.call('listTemplates').then(function (t) { templatesCache = t; return t; });
+    return Api.call('listTemplates').then(function (t) { templatesCache = t; return t; }).catch(function (e) {
+      var pk = Api.store.get(ckey('pack'));
+      if (e.code === 'OFFLINE' && pk && pk.templates) { templatesCache = pk.templates; return pk.templates; }
+      throw e;
+    });
   }
   function fillTemplate(text, ctx) {
     return String(text || '').replace(/\{(\w+)\}/g, function (m, k) { return ctx[k] !== undefined && ctx[k] !== '' ? ctx[k] : m; });
@@ -918,11 +1138,15 @@
   function firstName(n) { return String(n || '').trim().split(/\s+/)[0]; }
 
   function viewFollowUp(el) {
-    var centers = recordCenters();
+    var centers = recordCenters('followup');
     if (fState.center && !centers.some(function (c) { return c.center_id === fState.center; })) fState.center = '';
-    el.innerHTML = '<div class="boot" style="min-height:40vh"><div class="spinner"></div></div>';
-    Promise.all([Api.call('followUps', fState.center ? { center_id: fState.center } : {}), loadTemplates()]).then(function (res) {
-      var f = res[0], items = f.items, counts = { all: items.length };
+    paint(el, 'followups|' + fState.center, function () { return Promise.all([Api.call('followUps', fState.center ? { center_id: fState.center } : {}), loadTemplates()]); }, function (res) {
+      // Contacts logged on this phone and not sent yet are already off the list.
+      var waitingLogs = Sync.items().filter(function (q) { return q.action === 'logFollowUp'; }).map(function (q) { return q.payload; });
+      var f = res[0], items = f.items.filter(function (x) {
+        return !waitingLogs.some(function (w) { return w.participant_id === x.participant_id && (w.session_id === x.session_id || w.reason === x.reasons[0]); });
+      }), counts = { all: items.length };
+      f = Object.assign({}, f, { birthdays: f.birthdays.filter(function (b) { return !waitingLogs.some(function (w) { return w.participant_id === b.participant_id && w.reason === 'birthday'; }); }) });
       items.forEach(function (x) { x.reasons.forEach(function (r) { counts[r] = (counts[r] || 0) + 1; }); });
       if (fState.reason !== 'all' && !counts[fState.reason]) fState.reason = 'all';
       el.innerHTML = '<h1>Follow-up</h1>' +
@@ -954,7 +1178,7 @@
         b.onclick = function () { contactSheet(f.birthdays.filter(function (x) { return x.participant_id === b.dataset.bday; })[0], 'birthday'); };
       });
       draw();
-    }).catch(fail);
+    });
   }
 
   /**
@@ -962,8 +1186,9 @@
    * the child's own number comes first when there is one.
    */
   function contactSheet(x, forced) {
+    if (!templatesCache) { busy(true); loadTemplates().then(function () { busy(false); contactSheet(x, forced); }).catch(fail); return; }
+    var programId = (jobCenters('followup').filter(function (c) { return c.center_id === x.center_id; })[0] || {}).program_id;
     var reason = forced || x.reasons[0], purpose = PURPOSE_FOR[reason] || 'absentee';
-    var programId = (me.centers.filter(function (c) { return c.center_id === x.center_id; })[0] || {}).program_id;
     var tpl = ((templatesCache && templatesCache.templates[programId]) || {})[purpose] || { body: '', body_guardian: '' };
     var ctx = { child: firstName(x.name), date: x.meeting_date ? fmtDate(x.meeting_date) : '', theme: x.theme || '', center: x.center, leader: firstName(me.user.name) };
     var who = [];
@@ -995,9 +1220,16 @@
         if (!m) throw new Error('Choose how you made contact: Call, WhatsApp, SMS or Visit.');
         if (!f.outcome.value.trim()) throw new Error('Say what happened.');
         if (f.next_action_date.value && !f.next_action.value.trim()) throw new Error('Say what the next action is.');
-        return Api.call('logFollowUp', { participant_id: x.participant_id, session_id: reason === 'birthday' ? '' : x.session_id, reason: reason,
-          method: m.value, outcome: f.outcome.value, notes: f.notes.value, next_action: f.next_action.value, next_action_date: f.next_action_date.value })
-          .then(function () { toast('Saved for ' + firstName(x.name)); render(); });
+        var body = { participant_id: x.participant_id, session_id: reason === 'birthday' ? '' : x.session_id, reason: reason,
+          method: m.value, outcome: f.outcome.value, notes: f.notes.value, next_action: f.next_action.value, next_action_date: f.next_action_date.value };
+        var keep = function () {
+          Sync.add('logFollowUp', body, 'Follow-up: ' + x.name + ', ' + METHOD[m.value]);
+          toast('Saved on this phone. It is sent when you are online.'); render();
+        };
+        if (!navigator.onLine) return keep();
+        body.client_id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now());
+        return Api.call('logFollowUp', body).then(function () { toast('Saved for ' + firstName(x.name)); render(); })
+          .catch(function (e) { if (e.code === 'OFFLINE') return keep(); throw e; });
       });
     var pick = function (m) { var r = d.querySelector('[name=method][value=' + m + ']'); if (r) r.checked = true; };
     $all('[data-m]', d).forEach(function (a) {
@@ -1025,7 +1257,7 @@
         '<h3 style="margin-top:14px">Meetings</h3>' + (r.attendance.length ? '<div class="dots">' + r.attendance.slice().reverse().map(function (a) {
           return '<span class="dot' + (a.present ? ' on' : '') + '" title="' + h(fmtDate(a.date)) + ': ' + (a.present ? 'present' : 'absent') + '"><i></i><small>' + h(shortDate(a.date)) + '</small></span>';
         }).join('') + '</div><p class="small muted">Green = present. Oldest on the left.</p>' : '<p class="muted small">No submitted meeting yet.</p>') +
-        '<h3 style="margin-top:14px">Decisions</h3>' + (r.decisions.length ? '<ul class="plain">' + r.decisions.map(function (x) { return '<li>' + h(fmtDate(x.date)) + ' — ' + h(DECISION_NAME[x.type] || x.type) + '</li>'; }).join('') + '</ul>' : '<p class="muted small">None recorded.</p>') +
+        '<h3 style="margin-top:14px">Decisions</h3>' + (r.decisions.length ? '<ul class="plain">' + r.decisions.map(function (x) { return '<li>' + h(fmtDate(x.date)) + ': ' + h(x.type === 'other' ? x.label : (DECISION_NAME[x.type] || x.type)) + '</li>'; }).join('') + '</ul>' : '<p class="muted small">None recorded.</p>') +
         '<h3 style="margin-top:14px">Follow-up log</h3>' + (r.followups.length ? '<ul class="plain">' + r.followups.map(function (x) {
           return '<li><strong>' + h(fmtDate(x.date)) + '</strong> · ' + h(METHOD[x.method] || x.method) + (x.by ? ' by ' + h(x.by) : '') + '<br>' + h(x.outcome) +
             (x.notes ? '<br><span class="muted">' + h(x.notes) + '</span>' : '') + (x.next_action ? '<br><span class="small">Next: ' + h(x.next_action) + (x.next_action_date ? ' on ' + h(fmtDate(x.next_action_date)) : '') + '</span>' : '') + '</li>';
@@ -1036,8 +1268,7 @@
   /* ---------- statistics ---------- */
   var sState = { months: 6, program: '', center: '' };
   function viewStats(el) {
-    el.innerHTML = '<div class="boot" style="min-height:40vh"><div class="spinner"></div></div>';
-    Api.call('stats', { months: sState.months, program_id: sState.program || undefined, center_id: sState.center || undefined }).then(function (st) {
+    paint(el, 'stats|' + sState.months + '|' + sState.program + '|' + sState.center, function () { return Api.call('stats', { months: sState.months, program_id: sState.program || undefined, center_id: sState.center || undefined }); }, function (st) {
       var T = st.totals, avg = T.meetings ? Math.round(T.present * 10 / T.meetings) / 10 : 0, tr = st.trend;
       var progs = st.programs, cents = st.centers.filter(function (c) { return !sState.program || c.program_id === sState.program; });
       el.innerHTML = (me.can.record ? '<a href="#/more" class="small">‹ More</a>' : '') + '<h1>Statistics</h1>' +
@@ -1055,15 +1286,17 @@
             barChart({ id: 'st-dec', labels: tr.map(function (b) { return shortDate(b.date); }), full: tr.map(function (b) { return fmtDate(b.date); }),
               series: [{ name: 'Salvation', color: 'var(--s1)', values: tr.map(function (b) { return b.salvation; }) },
                        { name: 'Rededication', color: 'var(--s2)', values: tr.map(function (b) { return b.rededication; }) },
-                       { name: 'Commitment to grow', color: 'var(--s3)', values: tr.map(function (b) { return b.commitment_to_grow; }) }] }) + '</section>' : '')
+                       { name: 'Commitment to grow', color: 'var(--s3)', values: tr.map(function (b) { return b.commitment_to_grow; }) },
+                       { name: 'Other kinds', color: 'var(--s4)', values: tr.map(function (b) { return b.other || 0; }) }].filter(function (x, i) { return i < 3 || x.values.some(Boolean); }) }) + '</section>' : '')
           : '<div class="card empty">No submitted reports in this period.</div>') +
         (st.per_center.length > 1 ? '<section class="card"><h2>Centers compared</h2><p class="small muted">Average present per meeting</p>' +
           hbars(st.per_center, function (c) { return c.name; }, function (c) { return c.avg_present; }) +
-          '<div class="scroll"><table class="data"><thead><tr><th>Center</th><th>Reports</th><th>Avg present</th><th>First-timers</th><th>Decisions</th><th>Came back</th><th>On time</th></tr></thead><tbody>' +
+          '<div class="scroll"><table class="data"><thead><tr><th>Center</th><th>Reports</th><th>Avg present</th><th>First-timers</th><th>Decisions</th><th>Came back</th><th>On time</th><th>Tasks done</th></tr></thead><tbody>' +
           st.per_center.map(function (c) {
             return '<tr><td>' + h(c.name) + '</td><td>' + c.reports + '</td><td>' + c.avg_present + '</td><td>' + c.first_timers + '</td><td>' + c.decisions + '</td><td>' +
-              (c.retention ? c.retention.pct + '%' : '–') + '</td><td>' + (c.on_time_pct === null ? '–' : c.on_time_pct + '%') + '</td></tr>';
-          }).join('') + '</tbody></table></div><p class="small muted">Task completion per center is added with tasks in the next phase.</p></section>' : '') +
+              (c.retention ? c.retention.pct + '%' : '–') + '</td><td>' + (c.on_time_pct === null ? '–' : c.on_time_pct + '%') + '</td><td>' +
+              (c.task_completion ? c.task_completion.pct + '% (' + c.task_completion.done + '/' + c.task_completion.total + ')' : '–') + '</td></tr>';
+          }).join('') + '</tbody></table></div><p class="small muted">Tasks done: tasks of the center due in this period that are marked done.</p></section>' : '') +
         (st.per_program.length ? '<section class="card"><h2>Programs compared</h2>' + hbars(st.per_program, function (p) { return p.name; }, function (p) { return p.avg_present_per_meeting; }) +
           '<div class="scroll"><table class="data"><thead><tr><th>Program</th><th>Centers</th><th>Meetings</th><th>Avg present</th><th>First-timers</th><th>Decisions</th></tr></thead><tbody>' +
           st.per_program.map(function (p) { return '<tr><td>' + h(p.name) + '</td><td>' + p.centers + '</td><td>' + p.meetings + '</td><td>' + p.avg_present_per_meeting + '</td><td>' + p.first_timers + '</td><td>' + p.decisions + '</td></tr>'; }).join('') +
@@ -1082,7 +1315,7 @@
       var sp = $('#sp', el); if (sp) sp.onchange = function () { sState.program = sp.value; sState.center = ''; viewStats(el); };
       var sc = $('#sc', el); if (sc) sc.onchange = function () { sState.center = sc.value; viewStats(el); };
       wireCharts(el);
-    }).catch(fail);
+    });
   }
 
   /* ---------- message templates ---------- */
@@ -1090,7 +1323,7 @@
   var tState = { program: '' };
   function viewTemplates(el) {
     templatesCache = null;
-    el.innerHTML = '<div class="boot" style="min-height:40vh"><div class="spinner"></div></div>';
+    el.innerHTML = skeleton();
     loadTemplates().then(function (t) {
       var pids = Object.keys(t.templates);
       if (!tState.program || pids.indexOf(tState.program) === -1) tState.program = pids[0] || '';
@@ -1128,12 +1361,653 @@
     }).catch(fail);
   }
 
+  /* ---------- tasks: jobs handed to someone in the team ---------- */
+  var PRIORITY = { high: ['High', 'bad'], medium: ['Medium', 'warn'], low: ['Low', 'off'] };
+  var TSTATUS = { open: 'To do', in_progress: 'Doing', done: 'Done' };
+  var KIND = { report: 'Submit a report', followup: 'Follow-up', children: 'Children' };
+  var KIND_HELP = {
+    report: 'Takes the attendance and submits one center\'s report for one meeting. The task is finished when the report is submitted.',
+    followup: 'Calls and messages the children on the center\'s follow-up list and logs what happened.',
+    children: 'Adds new children and fills in missing details for the center. Deleting stays with you.'
+  };
+  function taskRow(t) {
+    var icon = t.kind ? ICON['job_' + t.kind] : '';
+    return '<button type="button" class="row task' + (t.overdue ? ' late' : '') + (t.status === 'done' ? ' done' : '') + '" data-task="' + h(t.task_id) + '">' +
+      '<span class="tick-s" aria-hidden="true">' + (t.status === 'done' ? '✓' : icon) + '</span><span class="grow"><span class="name">' + h(t.title) + '</span><br>' +
+      '<span class="sub">' + (t.assigned_to === me.user.user_id ? 'From ' + h(t.assigner) : 'To ' + h(t.assignee)) +
+      (t.due_date ? ', by ' + h(shortDate(t.due_date)) : '') + (t.comments ? ', ' + t.comments + ' comment' + (t.comments > 1 ? 's' : '') : '') + '</span><br>' +
+      (t.overdue ? '<span class="badge bad">Overdue</span>' : '') + (t.status === 'in_progress' ? '<span class="badge warn">Doing</span>' : '') +
+      (t.status === 'done' ? '<span class="badge">Done' + (t.completion_date ? ' ' + h(shortDate(t.completion_date)) : '') + '</span>' : '') +
+      (t.priority === 'high' && t.status !== 'done' ? '<span class="badge bad">High</span>' : '') + (!t.kind ? '<span class="badge off">Older to-do</span>' : '') +
+      '</span></button>';
+  }
+  function wireTaskRows(el) {
+    $all('[data-task]', el).forEach(function (b) { b.onclick = function () { taskSheet(b.dataset.task); }; });
+  }
+  var tkState = { view: 'mine', status: 'open', center: '', person: '' };
+  function viewTasks(el, args) {
+    if (!me.can.assign_tasks) tkState.view = 'mine';
+    paint(el, 'tasks|' + tkState.view, function () { return Api.call('listTasks', { view: tkState.view }); }, function (r) {
+      var tasks = r.tasks, centers = {}, people = {};
+      tasks.forEach(function (t) { if (t.center) centers[t.center_id] = t.center; people[t.assigned_to] = t.assignee; });
+      var tracking = tkState.view === 'tracking';
+      var shown = tasks.filter(function (t) {
+        if (tkState.status === 'open' && t.status === 'done') return false;
+        if (tkState.status === 'overdue' && !t.overdue) return false;
+        if (tkState.status === 'done' && t.status !== 'done') return false;
+        if (tracking && tkState.center && t.center_id !== tkState.center) return false;
+        if (tracking && tkState.person && t.assigned_to !== tkState.person) return false;
+        return true;
+      });
+      var done = tasks.filter(function (t) { return t.status === 'done'; }).length, late = tasks.filter(function (t) { return t.overdue; }).length;
+      el.innerHTML = '<a href="#/more" class="small">‹ More</a><h1>Tasks</h1>' +
+        '<p class="muted small">' + (me.can.assign_tasks ? 'Hand a job to someone in your team: a report, the follow-up, or the children of a center. They can do that job in the app until it is done or you cancel it.'
+          : 'Jobs handed to you. Open one from Home to start.') + '</p>' +
+        (me.can.assign_tasks ? '<div class="seg"><label><input type="radio" name="tv" value="mine"' + (!tracking ? ' checked' : '') + '><span>Handed to me</span></label>' +
+          '<label><input type="radio" name="tv" value="tracking"' + (tracking ? ' checked' : '') + '><span>Handed out by me</span></label></div>' : '') +
+        (tracking && tasks.length ? '<div class="tiles">' + tile(done + ' of ' + tasks.length, 'done') + tile(late, 'overdue') + '</div>' : '') +
+        '<div class="chips">' + [['open', 'Not done'], ['overdue', 'Overdue'], ['done', 'Done'], ['all', 'All']].map(function (x) {
+          return '<button type="button" class="chip-btn' + (tkState.status === x[0] ? ' on' : '') + '" data-s="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</div>' +
+        (tracking && Object.keys(centers).length > 1 ? '<label class="field">Center<select id="tkc"><option value="">All centers</option>' + Object.keys(centers).map(function (c) {
+          return '<option value="' + h(c) + '"' + (c === tkState.center ? ' selected' : '') + '>' + h(centers[c]) + '</option>'; }).join('') + '</select></label>' : '') +
+        (tracking && Object.keys(people).length > 1 ? '<label class="field">Person<select id="tkp"><option value="">Everyone</option>' + Object.keys(people).sort(function (a, b) { return people[a].localeCompare(people[b]); }).map(function (u) {
+          return '<option value="' + h(u) + '"' + (u === tkState.person ? ' selected' : '') + '>' + h(people[u]) + '</option>'; }).join('') + '</select></label>' : '') +
+        '<div class="list">' + (shown.length ? shown.map(taskRow).join('') : '<div class="empty">' + (tasks.length ? 'No task in this list.' : tracking ? 'You have not handed out any job yet.' : 'Nothing is handed to you.') + '</div>') + '</div>' +
+        (me.can.assign_tasks ? '<button class="btn fab" id="add-task">+ Hand over a job</button>' : '');
+      $all('[name=tv]', el).forEach(function (i) { i.onchange = function () { tkState.view = i.value; tkState.center = tkState.person = ''; viewTasks(el); }; });
+      $all('[data-s]', el).forEach(function (b) { b.onclick = function () { tkState.status = b.dataset.s; viewTasks(el); }; });
+      var c = $('#tkc', el); if (c) c.onchange = function () { tkState.center = c.value; viewTasks(el); };
+      var pp = $('#tkp', el); if (pp) pp.onchange = function () { tkState.person = pp.value; viewTasks(el); };
+      if (me.can.assign_tasks) $('#add-task', el).onclick = function () { taskForm(null); };
+      wireTaskRows(el);
+      if (args && args[0]) {
+        // Opened from a notification: show the task once, then forget it so a refresh does not reopen it.
+        var tid = args[0]; args[0] = '';
+        history.replaceState(null, '', location.pathname + location.search + '#/tasks'); currentHash = '#/tasks';
+        taskSheet(tid);
+      }
+    });
+  }
+
+  /** Hand over a job: what (report / follow-up / children), where (center, meeting), to whom, by when. */
+  function taskForm(t) {
+    if (t) {
+      sheet('Edit task',
+        '<p class="small muted">' + h(t.title) + ', to ' + h(t.assignee) + '</p>' +
+        '<label class="field">Note for ' + h(firstName(t.assignee)) + '<textarea name="description" rows="3" maxlength="1000">' + h(t.description) + '</textarea></label>' +
+        '<label class="field">Finish by<span class="hint">Optional</span><input type="date" name="due_date" value="' + h(t.due_date) + '"></label>' +
+        '<div class="field">Priority<div class="seg">' + ['low', 'medium', 'high'].map(function (x) {
+          return '<label><input type="radio" name="priority" value="' + x + '"' + (t.priority === x ? ' checked' : '') + '><span>' + PRIORITY[x][0] + '</span></label>'; }).join('') + '</div></div>',
+        'Save', function (form) {
+          return Api.call('saveTask', { task_id: t.task_id, description: form.elements.description.value, due_date: form.elements.due_date.value,
+            priority: (form.querySelector('[name=priority]:checked') || {}).value }).then(function () { toast('Task saved'); taskSheet(t.task_id); render(); });
+        });
+      return;
+    }
+    busy(true);
+    Api.call('taskTargets').then(function (tg) {
+      busy(false);
+      if (!tg.centers.length) { toast('You have no center to hand a job in.', true); return; }
+      var d = sheet('Hand over a job',
+        '<div class="field">Job<div class="seg" id="kinds">' + Object.keys(KIND).map(function (k, i) {
+          return '<label><input type="radio" name="kind" value="' + k + '"' + (i === 0 ? ' checked' : '') + '><span>' + KIND[k] + '</span></label>'; }).join('') + '</div>' +
+          '<span class="hint" id="kind-help"></span></div>' +
+        (tg.centers.length > 1 ? '<label class="field">Center<select name="center">' + tg.centers.map(function (c) {
+          return '<option value="' + h(c.center_id) + '">' + h(c.name) + '</option>'; }).join('') + '</select></label>' : '<p class="small" style="margin-top:12px">Center: <strong>' + h(tg.centers[0].name) + '</strong></p>') +
+        '<label class="field" id="mtg-field">Meeting<select name="meeting"></select></label>' +
+        '<h3 style="margin-top:16px">To whom</h3>' +
+        (tg.people.length ? '<input type="search" id="wq" placeholder="Find a name" autocomplete="off"><div class="picklist">' + tg.people.map(function (p) {
+          return '<label class="check" data-centers="' + h(p.center_ids.join(',')) + '"><input type="radio" name="uid" value="' + h(p.user_id) + '"><span>' + h(p.name) +
+            '<br><span class="small muted">' + h(ROLE[p.role]) + (p.center ? ', ' + h(p.center) : '') + '</span></span></label>'; }).join('') + '</div>'
+          : '<p class="error">There is nobody else in your team yet. Add an assistant under Team first.</p>') +
+        '<label class="field">Note<span class="hint">Optional, e.g. why you are handing it over</span><textarea name="description" rows="2" maxlength="1000"></textarea></label>' +
+        '<label class="field">Finish by<span class="hint">Optional</span><input type="date" name="due_date"></label>',
+        'Hand over', function (form) {
+          var f = form.elements, kind = form.querySelector('[name=kind]:checked').value, who = form.querySelector('[name=uid]:checked');
+          if (!who) throw new Error('Choose who gets the job.');
+          var center = f.center ? f.center.value : tg.centers[0].center_id;
+          if (kind === 'report' && !f.meeting.value) throw new Error('Choose the meeting of the report.');
+          return Api.call('saveTask', { kind: kind, center_id: center, meeting_id: kind === 'report' ? f.meeting.value : '', user_id: who.value,
+            description: f.description.value, due_date: f.due_date.value }).then(function () { toast('Job handed over'); render(); });
+        });
+      function sync() {
+        var kind = d.querySelector('[name=kind]:checked').value, center = d.querySelector('[name=center]') ? d.querySelector('[name=center]').value : tg.centers[0].center_id;
+        var c = tg.centers.filter(function (x) { return x.center_id === center; })[0];
+        $('#kind-help', d).textContent = KIND_HELP[kind];
+        $('#mtg-field', d).hidden = kind !== 'report';
+        var ms = tg.meetings.filter(function (m) { return m.program_id === c.program_id && m.submitted.indexOf(center) === -1; });
+        d.querySelector('[name=meeting]').innerHTML = ms.length ? ms.map(function (m) { return '<option value="' + h(m.meeting_id) + '">' + h(fmtDate(m.date)) + ', ' + h(m.theme) + '</option>'; }).join('')
+          : '<option value="">No open meeting without a report</option>';
+        // People of the chosen center first.
+        var list = $('.picklist', d);
+        if (list) $all('.check', list).sort(function (a, b) { return (b.dataset.centers.indexOf(center) !== -1) - (a.dataset.centers.indexOf(center) !== -1); }).forEach(function (l) { list.appendChild(l); });
+      }
+      $all('[name=kind]', d).forEach(function (i) { i.onchange = sync; });
+      var cs = d.querySelector('[name=center]'); if (cs) cs.onchange = sync;
+      var wq = $('#wq', d); if (wq) wq.oninput = function () { var q = wq.value.toLowerCase(); $all('.picklist .check', d).forEach(function (l) { l.hidden = q && l.textContent.toLowerCase().indexOf(q) === -1; }); };
+      sync();
+    }).catch(fail);
+  }
+
+  function taskSheet(id) {
+    busy(true);
+    Api.call('getTask', { task_id: id }).then(function (r) {
+      busy(false);
+      var t = r.task, mine = t.assigned_to === me.user.user_id;
+      var job = mine && t.status !== 'done' && t.kind ? (me.jobs || []).filter(function (j) { return j.task_id === t.task_id; })[0] : null;
+      var statuses = t.kind === 'report' ? ['open', 'in_progress'] : ['open', 'in_progress', 'done'];
+      var d = sheet(t.title,
+        '<p class="small muted">' + (mine ? 'From ' + h(t.assigner) : 'To ' + h(t.assignee) + ', from ' + h(t.assigner)) + '</p>' +
+        '<p>' + (t.due_date ? '<span class="badge ' + (t.overdue ? 'bad' : 'off') + '">' + (t.overdue ? 'Overdue, was due ' : 'Finish by ') + h(fmtDate(t.due_date)) + '</span>' : '') +
+          '<span class="badge ' + PRIORITY[t.priority][1] + '">' + PRIORITY[t.priority][0] + ' priority</span>' + (t.status === 'done' ? '<span class="badge">Done</span>' : '') + '</p>' +
+        (t.kind ? '<p class="small">' + h(KIND_HELP[t.kind]) + '</p>' : '') +
+        (t.description ? '<p class="tpl">' + h(t.description) + '</p>' : '') +
+        (job ? '<button type="button" class="btn block" data-a="open" style="margin-top:12px">' + JOB_VERB[t.kind] + '</button>' : '') +
+        (t.can_update && t.status !== 'done' ? '<div class="field">Status<div class="seg" id="tstat">' + statuses.map(function (x) {
+          return '<label><input type="radio" name="status" value="' + x + '"' + (t.status === x ? ' checked' : '') + '><span>' + TSTATUS[x] + '</span></label>'; }).join('') + '</div>' +
+          (t.kind === 'report' ? '<span class="hint">Finished automatically when the report is submitted.</span>' : '') + '</div>' : '') +
+        '<h3 style="margin-top:16px">Comments</h3><div class="comments">' + (r.comments.length ? r.comments.map(function (c) {
+          return '<div class="cm' + (c.user_id === me.user.user_id ? ' mine' : '') + '"><strong>' + h(c.name) + '</strong> <span class="small muted">' + h(new Date(c.created_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })) + '</span><br>' + h(c.comment) + '</div>';
+        }).join('') : '<p class="small muted">No comments yet.</p>') + '</div>' +
+        '<label class="field">Add a comment<textarea name="comment" rows="2" maxlength="1000"></textarea></label>' +
+        (t.can_edit ? '<div class="stack" style="margin-top:14px">' + (t.status !== 'done' ? '<button type="button" class="btn quiet block" data-a="edit">Change note or date</button>' : '') +
+          '<button type="button" class="btn danger block" data-a="del">' + (t.status === 'done' ? 'Remove from the list' : 'Cancel this job') + '</button></div>' : ''),
+        'Post comment', function (form) {
+          var text = form.elements.comment.value.trim();
+          if (!text) throw new Error('Write a comment first.');
+          return Api.call('addTaskComment', { task_id: t.task_id, comment: text }).then(function () { toast('Comment posted'); taskSheet(t.task_id); });
+        });
+      $all('[name=status]', d).forEach(function (i) {
+        i.onchange = function () {
+          Api.call('setTaskStatus', { task_id: t.task_id, status: i.value }).then(function () {
+            toast(i.value === 'done' ? 'Marked done' : 'Status saved'); d.close();
+            boot().then(render).catch(function () { render(); });
+          }).catch(function (e) { toast(e.message, true); });
+        };
+      });
+      $all('[data-a]', d).forEach(function (b) {
+        b.onclick = function () {
+          if (b.dataset.a === 'open') { d.close(); return openJob(job); }
+          if (b.dataset.a === 'edit') { d.close(); return taskForm(t); }
+          if (t.status !== 'done' && !confirm('Cancel this job? ' + t.assignee + ' can no longer do it in the app.')) return;
+          d.close(); busy(true);
+          Api.call('deleteTask', { task_id: t.task_id }).then(function () { busy(false); toast(t.status === 'done' ? 'Removed' : 'Job cancelled'); render(); }).catch(fail);
+        };
+      });
+    }).catch(fail);
+  }
+
+  /* ---------- notifications ---------- */
+  function viewNotifications(el) {
+    el.innerHTML = skeleton();
+    Api.call('listNotifications').then(function (r) {
+      el.innerHTML = '<h1>Notifications</h1><div class="list">' + (r.notifications.length ? r.notifications.map(function (n) {
+        return '<button type="button" class="row' + (n.read ? '' : ' unread') + '" data-link="' + h(n.link) + '"><span class="grow"><span class="name">' + h(n.title) + '</span><br><span class="sub">' + h(n.body) +
+          ' · ' + h(new Date(n.created_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })) + '</span></span></button>';
+      }).join('') : '<div class="empty">Nothing yet.</div>') + '</div>';
+      $all('[data-link]', el).forEach(function (b) {
+        b.onclick = function () { var l = b.dataset.link; if (l.indexOf('task:') === 0) go('#/tasks/' + l.slice(5)); };
+      });
+      if (r.unread) Api.call('markNotificationsRead', {}).then(function (x) {
+        me.unread = x.unread; var bell = $('.bell .dotn'); if (bell) bell.remove();
+      }).catch(function () {});
+    }).catch(fail);
+  }
+
+  /* ---------- reminders ---------- */
+  var CHANNEL = { email: 'Email', whatsapp: 'WhatsApp', sms: 'SMS' };
+  var rmState = { channel: 'whatsapp' };
+  function fillReminder(text, ctx) { return String(text || '').replace(/\{(\w+)\}/g, function (m, k) { return ctx[k] !== undefined ? ctx[k] : m; }); }
+  function viewReminders(el, args) {
+    el.innerHTML = skeleton();
+    Api.call('reminderData', args && args[0] ? { meeting_id: args[0] } : {}).then(function (r) {
+      var m = r.meeting, missing = r.centers.filter(function (c) { return !c.submitted; });
+      var q = r.quota;
+      el.innerHTML = '<a href="#/more" class="small">‹ More</a><h1>Reminders</h1>' +
+        (m ? '<label class="field" style="margin-top:0">Meeting<select id="rm">' + r.meetings.map(function (x) {
+          return '<option value="' + h(x.meeting_id) + '"' + (x.meeting_id === m.meeting_id ? ' selected' : '') + '>' + h(fmtDate(x.date)) + ' — ' + h(x.theme) + (x.status === 'closed' ? ' (closed)' : '') + '</option>'; }).join('') + '</select></label>' : '') +
+        (m ? '<section class="card"><h2>Report not submitted</h2>' + (missing.length ? '<p class="small muted">Everyone below is ticked. Untick anyone you do not want to remind.</p>' + missing.map(function (c) {
+          return '<div class="rc"><p><strong>' + h(c.name) + '</strong> ' + (c.draft ? '<span class="badge warn">Draft started</span>' : '<span class="badge off">Not started</span>') +
+            (c.reminded ? '<span class="badge">Reminded ' + h(shortDate(c.reminded.slice(0, 10))) + '</span>' : '') + '</p>' +
+            (c.team.length ? c.team.map(function (u) {
+              return '<label class="check"><input type="checkbox" name="ru" value="' + h(u.user_id) + '" checked><span>' + h(u.name) + ' <span class="small muted">· ' + h(ROLE[u.role]) + '</span><br>' +
+                '<span class="small muted">' + (u.email && !/@example\.(com|org|net)$/i.test(u.email) ? 'email ✓' : 'no email') + ' · ' + (u.phone ? 'phone ✓' : 'no phone') + '</span></span></label>'; }).join('')
+              : '<p class="small error">No leader or assistant in this center. Add one under Team.</p>') + '</div>';
+        }).join('') : '<p class="muted">Every center has submitted for this meeting.</p>') +
+        (r.centers.length - missing.length ? '<p class="small muted" style="margin-top:8px">Submitted: ' + r.centers.filter(function (c) { return c.submitted; }).map(function (c) { return h(c.name); }).join(', ') + '</p>' : '') + '</section>' : '<div class="card empty">No meeting yet.</div>') +
+        (m && missing.length ? '<section class="card"><h2>Send by</h2><div class="seg">' + Object.keys(CHANNEL).map(function (c) {
+            return '<label><input type="radio" name="ch" value="' + c + '"' + (rmState.channel === c ? ' checked' : '') + '><span>' + CHANNEL[c] + '</span></label>'; }).join('') + '</div>' +
+          '<p class="small muted" id="ch-note"></p>' +
+          '<div class="head" style="margin-top:12px"><h3>Message</h3>' + (r.can_edit_template ? '<button type="button" class="btn quiet mini" id="edit-tpl">Edit</button>' : '') + '</div>' +
+          '<p class="tpl" id="preview"></p><p class="small muted">Reminders never include children\'s names or details.</p>' +
+          '<div class="stack" style="margin-top:12px"><button type="button" class="btn block" id="send">Remind</button>' +
+          '<button type="button" class="btn quiet block" id="test">Send a test to me</button></div></section>' : '') +
+        '<section class="card"><div class="head"><h2>Other message</h2><button type="button" class="btn ghost mini" id="custom">Write</button></div><p class="small muted">Any message to leaders and assistants in your centers.</p></section>' +
+        '<section class="card"><div class="head"><h2>Automatic</h2>' + (r.automation.can_change ? '<button type="button" class="btn quiet mini" id="auto">Change</button>' : '') + '</div>' +
+          '<p class="small">' + (r.automation.enabled ? 'On: centers that have not submitted get an email ' + r.automation.hours + ' hours after the meeting day.' : 'Off: report reminders are only sent from this screen.') + '</p>' +
+          '<p class="small">Task reminders: ' + (r.automation.job ? r.automation.task_days + (r.automation.task_days === 1 ? ' day' : ' days') + ' before the due date.' : 'off.') + '</p>' +
+          '<p class="small muted">' + q.left + ' emails left today (' + q.for_reminders + ' for reminders).</p></section>' +
+        '<section class="card"><h2>Sent</h2>' + (r.log.length ? '<div class="list">' + r.log.map(function (l) {
+          var badge = l.status === 'sent' ? '' : l.status === 'queued' ? 'warn' : l.status === 'failed' ? 'bad' : 'off';
+          return '<' + (l.status === 'queued' && l.mine ? 'button type="button"' : 'div') + ' class="row' + (l.status === 'queued' && l.mine ? '' : ' static') + '" data-q="' + h(l.reminder_id) + '"><span class="grow"><span class="name">' + h(l.recipient || '—') + (l.center ? ' · ' + h(l.center) : '') + '</span><br>' +
+            '<span class="sub">' + h(CHANNEL[l.channel] || l.channel) + ' · ' + h(l.type === 'report_submission' ? 'report' : l.type) + ' · ' + h(l.sent_by) + ' · ' + h(shortDate(String(l.sent_at).slice(0, 10))) + (l.error ? ' · ' + h(l.error) : '') + '</span></span>' +
+            '<span class="badge ' + badge + '">' + (l.status === 'queued' ? 'To send' : l.status === 'sent' ? 'Sent' : l.status === 'failed' ? 'Failed' : 'Not sent') + '</span></' + (l.status === 'queued' && l.mine ? 'button' : 'div') + '>';
+        }).join('') + '</div>' : '<p class="muted small">Nothing sent yet.</p>') + '</section>';
+
+      var rmSel = $('#rm', el); if (rmSel) rmSel.onchange = function () { go('#/reminders/' + rmSel.value); };
+      function chosen() { return $all('[name=ru]:checked', el).map(function (x) { return x.value; }); }
+      function update() {
+        var ch = (el.querySelector('[name=ch]:checked') || {}).value; if (!ch) return;
+        rmState.channel = ch;
+        var n = chosen().length;
+        $('#ch-note', el).textContent = ch === 'email' ? q.for_reminders + ' reminder emails left today. Sent straight away from the Sheet owner\'s Gmail.'
+          : 'You will tap through each message and press Send in ' + CHANNEL[ch] + ' yourself. No paid service is used.';
+        $('#send', el).textContent = n ? 'Remind ' + n + (n === 1 ? ' person' : ' people') + ' by ' + CHANNEL[ch] : 'Tick someone to remind';
+        $('#send', el).disabled = !n;
+        var first = missing.filter(function (c) { return c.team.some(function (u) { return chosen().indexOf(u.user_id) !== -1; }); })[0] || missing[0];
+        var u = first && first.team[0];
+        $('#preview', el).textContent = fillReminder(r.template.body, { center: first ? first.name : '', leader: u ? firstName(u.name) : '', date: fmtDate(m.date), theme: m.theme, program: programName(m.program_id) });
+      }
+      if (m && missing.length) {
+        $all('[name=ch], [name=ru]', el).forEach(function (i) { i.onchange = update; }); update();
+        $('#send', el).onclick = function () {
+          var ids = chosen(), ch = rmState.channel;
+          if (ch === 'email' && !confirm('Email ' + ids.length + (ids.length === 1 ? ' person' : ' people') + ' now?')) return;
+          sendReminders({ type: 'report_submission', meeting_id: m.meeting_id, channel: ch, user_ids: ids });
+        };
+        $('#test', el).onclick = function () { sendReminders({ test: true, meeting_id: m.meeting_id, channel: rmState.channel }); };
+        var et = $('#edit-tpl', el);
+        if (et) et.onclick = function () {
+          var dd = sheet('Report reminder text',
+            '<label class="field">Email subject<input type="text" name="subject" maxlength="150" value="' + h(r.template.subject) + '"></label>' +
+            '<label class="field">Message<textarea name="body" rows="6" maxlength="1000">' + h(r.template.body) + '</textarea></label>' +
+            '<p class="small muted">You can use {leader} {center} {date} {theme} {program}. Never a child\'s name or details.</p>' +
+            (r.template.own ? '<p><button type="button" class="linkbtn" data-reset>Go back to the standard message</button></p>' : ''),
+            'Save', function (form) {
+              return Api.call('saveReminderTemplate', { program_id: m.program_id, subject: form.elements.subject.value, body: form.elements.body.value }).then(function () { toast('Message saved'); render(); });
+            });
+          var rs = $('[data-reset]', dd);
+          if (rs) rs.onclick = function () { dd.close(); Api.call('saveReminderTemplate', { program_id: m.program_id, reset: true }).then(function () { toast('Standard message restored'); render(); }).catch(fail); };
+        };
+      }
+      $('#custom', el).onclick = function () { customReminder(r); };
+      var au = $('#auto', el); if (au) au.onclick = function () { automationForm(r.automation); };
+      $all('button[data-q]', el).forEach(function (b) {
+        b.onclick = function () {
+          var l = r.log.filter(function (x) { return x.reminder_id === b.dataset.q; })[0];
+          queueSheet([{ reminder_id: l.reminder_id, name: l.recipient, center: l.center, phone: l.to, number: waNumber(l.to), message: l.message }], l.channel);
+        };
+      });
+    }).catch(fail);
+  }
+
+  function sendReminders(payload) {
+    busy(true);
+    return Api.call('sendReminders', payload).then(function (res) {
+      busy(false);
+      if (payload.channel === 'email') {
+        sheet(payload.test ? 'Test sent' : 'Reminders sent',
+          '<p>' + (res.sent ? '<strong>' + res.sent + '</strong> ' + (res.sent === 1 ? 'email was' : 'emails were') + ' sent.' : 'No email was sent.') + '</p>' +
+          (res.skipped.length ? '<p style="margin-top:10px">Not sent:</p><ul class="small">' + res.skipped.map(function (x) { return '<li>' + h(x.name) + ': ' + h(x.error) + '</li>'; }).join('') + '</ul>' : '') +
+          (res.failed.length ? '<p class="error">Failed: ' + res.failed.map(function (x) { return h(x.to) + ' (' + h(x.error) + ')'; }).join(', ') + '</p>' : '') +
+          '<p class="small muted" style="margin-top:10px">' + res.quota.left + ' emails left today.</p>' +
+          (res.skipped.some(function (x) { return x.error === 'No email address'; }) ? '<p class="small">Those without email can be reminded by WhatsApp or SMS.</p>' : ''));
+        render();
+      } else if (res.queue.length) {
+        queueSheet(res.queue, payload.channel);
+      } else {
+        sheet('Nothing to send', '<p>None of the people chosen has a phone number.</p>' + res.skipped.map(function (x) { return '<p class="small">' + h(x.name) + ': ' + h(x.error) + '</p>'; }).join(''));
+      }
+    }).catch(fail);
+  }
+
+  /** Tap through WhatsApp/SMS reminders one by one; each is marked sent (or skipped). */
+  function queueSheet(queue, channel) {
+    var left = queue.length;
+    var d = sheet(CHANNEL[channel] + ': ' + queue.length + (queue.length === 1 ? ' message' : ' messages'),
+      '<p class="small muted">Tap Open, press Send in ' + CHANNEL[channel] + ', come back here and tap Sent.</p><div id="q">' + queue.map(function (x, i) {
+        var link = channel === 'whatsapp' ? 'https://wa.me/' + x.number + '?text=' + encodeURIComponent(x.message) : 'sms:+' + x.number + '?body=' + encodeURIComponent(x.message);
+        return '<div class="qi" data-i="' + i + '"><p><strong>' + h(x.name) + '</strong>' + (x.center ? ' · ' + h(x.center) : '') + '<br><span class="small muted">' + h(x.phone) + '</span></p>' +
+          '<p class="small tpl">' + h(x.message) + '</p><div class="cbtns"><a class="btn" ' + (channel === 'whatsapp' ? 'target="_blank" rel="noopener" ' : '') + 'href="' + h(link) + '" data-open>Open</a>' +
+          '<button type="button" class="btn ghost" data-sent>Sent</button><button type="button" class="btn quiet" data-skip>Skip</button></div></div>';
+      }).join('') + '</div><p class="small" id="q-left"></p>');
+    function count() { $('#q-left', d).textContent = left ? left + ' still to send.' : 'All done.'; }
+    $all('.qi', d).forEach(function (row) {
+      var x = queue[+row.dataset.i];
+      var mark = function (status) {
+        Api.call('markReminder', { reminder_id: x.reminder_id, status: status }).then(function () {
+          row.classList.add('done'); row.querySelector('.cbtns').innerHTML = '<span class="badge ' + (status === 'sent' ? '' : 'off') + '">' + (status === 'sent' ? 'Sent' : 'Skipped') + '</span>';
+          left--; count();
+        }).catch(function (e) { toast(e.message, true); });
+      };
+      $('[data-sent]', row).onclick = function () { mark('sent'); };
+      $('[data-skip]', row).onclick = function () { mark('skipped'); };
+    });
+    count();
+    d.addEventListener('close', function () { if (location.hash.indexOf('#/reminders') === 0) render(); });
+  }
+
+  function customReminder(r) {
+    var byCenter = {};
+    r.team.forEach(function (u) { (byCenter[u.center || '—'] = byCenter[u.center || '—'] || []).push(u); });
+    var d = sheet('Message to leaders',
+      '<p class="small muted">Tick who gets it.</p>' + Object.keys(byCenter).sort().map(function (c) {
+        return '<p style="margin-top:10px"><strong>' + h(c) + '</strong> <button type="button" class="linkbtn small" data-all="' + h(c) + '">all</button></p>' + byCenter[c].map(function (u) {
+          return '<label class="check"><input type="checkbox" name="cu" value="' + h(u.user_id) + '" data-c="' + h(c) + '"><span>' + h(u.name) + ' <span class="small muted">· ' + h(ROLE[u.role]) + '</span></span></label>'; }).join('');
+      }).join('') +
+      '<div class="seg" style="margin-top:12px">' + Object.keys(CHANNEL).map(function (c) { return '<label><input type="radio" name="cch" value="' + c + '"' + (c === 'whatsapp' ? ' checked' : '') + '><span>' + CHANNEL[c] + '</span></label>'; }).join('') + '</div>' +
+      '<label class="field">Email subject<span class="hint">Email only</span><input type="text" name="subject" maxlength="150"></label>' +
+      '<label class="field">Message<textarea name="message" rows="5" maxlength="1000" placeholder="Hello {leader}, …"></textarea></label>' +
+      '<p class="small muted">You can use {leader} and {center}. Do not include any child\'s name or details; the app refuses them.</p>',
+      'Send', function (form) {
+        var ids = $all('[name=cu]:checked', form).map(function (x) { return x.value; });
+        if (!ids.length) throw new Error('Tick at least one person.');
+        var msg = form.elements.message.value.trim(); if (msg.length < 5) throw new Error('Write the message.');
+        var ch = form.querySelector('[name=cch]:checked').value;
+        d.close();
+        sendReminders({ type: 'custom', channel: ch, user_ids: ids, message: msg, subject: form.elements.subject.value });
+        return true;
+      });
+    $all('[data-all]', d).forEach(function (b) { b.onclick = function () { $all('[name=cu][data-c="' + b.dataset.all + '"]', d).forEach(function (x) { x.checked = true; }); }; });
+  }
+
+  function automationForm(a) {
+    sheet('Automatic reminders',
+      '<label class="check"><input type="checkbox" name="on"' + (a.enabled ? ' checked' : '') + '><span><strong>Email centers that have not submitted</strong><br><span class="small muted">One email to the leaders and assistants of each late center, once per meeting.</span></span></label>' +
+      '<label class="field">Hours after the meeting day<input type="text" inputmode="numeric" name="hours" value="' + h(a.hours) + '"></label>' +
+      '<label class="field">Task reminder, days before due<span class="hint">0 = on the due date</span><input type="text" inputmode="numeric" name="days" value="' + h(a.task_days) + '"></label>' +
+      '<label class="check"><input type="checkbox" name="job"' + (a.job ? ' checked' : '') + '><span><strong>Run the daily job</strong> (every morning around 7)<br><span class="small muted">Needed for task due reminders and automatic report emails.</span></span></label>',
+      'Save', function (form) {
+        var f = form.elements;
+        return Api.call('saveAutomation', { enabled: f.on.checked, hours: Number(f.hours.value), task_days: Number(f.days.value), job: f.job.checked })
+          .then(function () { toast('Saved'); render(); });
+      });
+  }
+
+  /* ---------- combined report ---------- */
+  var rpState = { mode: 'meeting', month: '', program: '' };
+  function plural(n, one, many) { return n + ' ' + (n === 1 ? one : (many || one + 's')); }
+  function kindsText(k) { return Object.keys(k).map(function (x) { return x + ' ' + k[x]; }).join(', '); }
+  /** Routes: #/reports (latest), #/reports/<meeting id>, #/reports/month/<yyyy-mm>/<program id> */
+  function viewReports(el, args) {
+    args = args || [];
+    var payload = args[0] === 'month' ? { month: args[1], program_id: args[2] || undefined } : args[0] ? { meeting_id: args[0] } : null;
+    if (!payload) {
+      // Latest meeting that has at least one report.
+      var ms = ((homeData && homeData.meetings) || []).filter(function (m) { return m.date <= (me.today || '9') && m.centers.some(function (c) { return c.state === 'submitted'; }); });
+      payload = ms.length ? { meeting_id: ms[0].meeting_id } : { month: (me.today || new Date().toISOString()).slice(0, 7) };
+    }
+    rpState.mode = payload.month ? 'month' : 'meeting';
+    paint(el, 'report|' + JSON.stringify(payload), function () { return Api.call('report', payload); }, function (r) { drawReport(el, r, payload); });
+  }
+  function drawReport(el, r, payload) {
+    var T = r.totals, m0 = r.meetings[0];
+    var reported = r.centers.filter(function (c) { return c.reported; }), missing = r.centers.filter(function (c) { return !c.reported; });
+    var monthVal = r.period === 'month' ? r.month : (m0 ? m0.date.slice(0, 7) : (me.today || '').slice(0, 7));
+    el.innerHTML =
+      '<div class="no-print"><a href="#/more" class="small">‹ More</a><h1>Combined report</h1>' +
+      '<div class="seg"><label><input type="radio" name="rmode" value="meeting"' + (r.period === 'meeting' ? ' checked' : '') + '><span>One meeting</span></label>' +
+        '<label><input type="radio" name="rmode" value="month"' + (r.period === 'month' ? ' checked' : '') + '><span>A month</span></label></div>' +
+      (r.period === 'meeting' ? '<label class="field">Meeting<select id="rmeet">' + r.choices.meetings.map(function (m) {
+          return '<option value="' + h(m.meeting_id) + '"' + (m0 && m.meeting_id === m0.meeting_id ? ' selected' : '') + '>' + h(fmtDate(m.date)) + ', ' + h(m.theme) + '</option>'; }).join('') + '</select></label>'
+        : '<div class="two"><label class="field">Month<input type="month" id="rmonth" value="' + h(monthVal) + '"></label>' +
+          (r.choices.programs.length > 1 ? '<label class="field">Program<select id="rprog">' + r.choices.programs.map(function (p) {
+            return '<option value="' + h(p.program_id) + '"' + (p.program_id === r.program_id ? ' selected' : '') + '>' + h(p.name) + '</option>'; }).join('') + '</select></label>' : '') + '</div>') +
+      '<div class="stack" style="margin-top:14px"><button type="button" class="btn block" id="wa">Copy WhatsApp version</button>' +
+        '<button type="button" class="btn quiet block" id="print">Print or save as PDF</button></div></div>' +
+
+      '<article class="doc">' +
+        '<header><img src="img/logo-96.png" alt="LivingSeed" width="64" height="64"><div><h1>' + h(r.program) + '</h1>' +
+          '<p class="meta">' + h(r.org_name) + '. Combined report, ' + h(r.period === 'meeting' ? 'meeting of ' + r.period_label : r.period_label) + '</p></div></header>' +
+        (r.meetings.length ? r.meetings.map(function (m) {
+          return '<p class="meta" style="margin-top:10px"><strong>' + h(m.theme) + '</strong>' + (m.scripture ? ' (' + h(m.scripture) + ')' : '') + ', ' + h(fmtDate(m.date)) + '</p>'; }).join('')
+          : '<p class="meta" style="margin-top:10px">No meeting in this month.</p>') +
+        '<div class="figs"><div><b>' + T.present + '</b><span>present</span></div><div><b>' + T.first_timers + '</b><span>first-timers</span></div>' +
+          '<div><b>' + T.decisions + '</b><span>decisions</span></div><div><b>' + T.reported + ' of ' + T.centers + '</b><span>centers reported</span></div></div>' +
+        (r.previous ? '<p class="meta" style="margin-top:8px">' + h(r.previous.label) + ': ' + r.previous.present + ' present.</p>' : '') +
+        (T.decisions ? '<p style="margin-top:10px"><strong>Decisions:</strong> ' + h(kindsText(T.decision_kinds)) + '</p>' : '') +
+
+        '<h2>Attendance by center</h2><div class="scroll"><table class="data"><thead><tr><th>Center</th><th>Present</th><th>New</th><th>Returning</th><th>Decisions</th><th>Started</th></tr></thead><tbody>' +
+          r.centers.map(function (c) {
+            var s0 = c.sessions[0];
+            return '<tr><td>' + h(c.name) + '</td>' + (c.reported ? '<td><strong>' + c.present + '</strong></td><td>' + c.first_timers + '</td><td>' + c.returning + '</td><td>' + c.decisions + '</td><td>' +
+              h(c.sessions.map(function (s) { return (s.start_time || '?') + (s.punctuality === 'late' ? ' (late)' : ''); }).join(', ')) + '</td>'
+              : '<td colspan="5" class="missing">No report submitted</td>') + '</tr>';
+          }).join('') +
+          '<tr><td><strong>Total</strong></td><td><strong>' + T.present + '</strong></td><td>' + T.first_timers + '</td><td>' + T.returning + '</td><td>' + T.decisions + '</td><td></td></tr>' +
+        '</tbody></table></div>' +
+
+        '<h2>From the centers</h2>' + (reported.length ? reported.map(function (c) {
+          return '<div class="cblock"><h3>' + h(c.name) + '</h3>' + c.sessions.map(function (s) {
+            return (r.meetings.length > 1 ? '<p class="meta">' + h(fmtDate(s.date)) + '</p>' : '') +
+              '<p class="meta">Facilitators: ' + h(s.facilitators || 'not given') + (s.submitted_by ? '. Report by ' + h(s.submitted_by) : '') + '.</p>' +
+              (Object.keys(c.decision_kinds).length ? '<p><strong>Decisions:</strong> ' + h(kindsText(c.decision_kinds)) + '</p>' : '') +
+              (s.observations ? '<p><strong>Observations:</strong> ' + h(s.observations) + '</p>' : '') +
+              (s.recommendations ? '<p><strong>Recommendations:</strong> ' + h(s.recommendations) + '</p>' : '');
+          }).join('') + '</div>';
+        }).join('') : '<p class="meta">No center has submitted yet.</p>') +
+        (missing.length ? '<p class="missing" style="margin-top:12px">Not submitted: ' + h(missing.map(function (c) { return c.name; }).join(', ')) + '</p>' : '') +
+
+        '<h2>Conclusion</h2>' +
+        (r.can_edit ? '<div class="no-print"><textarea id="concl" rows="8" maxlength="4000">' + h(r.conclusion) + '</textarea>' +
+            '<p class="small muted">' + (r.conclusion_saved ? 'Saved by ' + h(r.conclusion_by) + '.' : 'Drafted by the app from the figures. Edit it, then save.') + '</p>' +
+            '<div class="stack" style="margin-top:8px"><button type="button" class="btn ghost block" id="save-concl">Save conclusion</button>' +
+            (r.conclusion_saved ? '<button type="button" class="linkbtn" id="reset-concl">Go back to the app\'s draft</button>' : '') + '</div></div>' +
+            '<p class="conclusion print-only" hidden>' + h(r.conclusion) + '</p>'
+          : '<p class="conclusion">' + h(r.conclusion) + '</p>') +
+        '<footer>Prepared with Outreach Tracker on ' + h(fmtDate(me.today || new Date().toISOString().slice(0, 10))) + '. Children\'s names and details are never part of this report.</footer>' +
+      '</article>';
+
+    var go2 = function (p2) { if (p2.meeting_id) go('#/reports/' + p2.meeting_id); else go('#/reports/month/' + p2.month + '/' + (p2.program_id || r.program_id)); };
+    $all('[name=rmode]', el).forEach(function (i) {
+      i.onchange = function () { go2(i.value === 'month' ? { month: monthVal, program_id: r.program_id } : { meeting_id: (r.choices.meetings[0] || {}).meeting_id || '' }); };
+    });
+    var rm = $('#rmeet', el); if (rm) rm.onchange = function () { go2({ meeting_id: rm.value }); };
+    var rmo = $('#rmonth', el); if (rmo) rmo.onchange = function () { if (rmo.value) go2({ month: rmo.value, program_id: ($('#rprog', el) || {}).value || r.program_id }); };
+    var rp = $('#rprog', el); if (rp) rp.onchange = function () { go2({ month: monthVal, program_id: rp.value }); };
+    $('#print', el).onclick = function () {
+      var c = $('#concl', el), pc = $('.print-only', el);
+      if (c && pc) { pc.textContent = c.value; pc.hidden = false; }
+      window.print();
+      if (pc) pc.hidden = true;
+    };
+    $('#wa', el).onclick = function () {
+      var c = $('#concl', el), text = whatsappReport(r, c ? c.value : r.conclusion);
+      var done = function () { toast('Copied. Paste it in WhatsApp.'); };
+      if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(done, function () { showText(text); });
+      else showText(text);
+    };
+    var sv = $('#save-concl', el);
+    if (sv) sv.onclick = function () {
+      busy(true);
+      Api.call('saveReportConclusion', Object.assign({}, payload, { conclusion: $('#concl', el).value })).then(function (x) {
+        busy(false); Api.store.set(ckey('report|' + JSON.stringify(payload)), x); toast('Conclusion saved'); drawReport(el, x, payload);
+      }).catch(fail);
+    };
+    var rs = $('#reset-concl', el);
+    if (rs) rs.onclick = function () {
+      busy(true);
+      Api.call('saveReportConclusion', Object.assign({}, payload, { reset: true })).then(function (x) {
+        busy(false); Api.store.set(ckey('report|' + JSON.stringify(payload)), x); toast('Back to the app\'s draft'); drawReport(el, x, payload);
+      }).catch(fail);
+    };
+  }
+  function showText(text) {
+    var d = sheet('WhatsApp version', '<p class="small muted">Copy all of it and paste it in WhatsApp.</p><textarea rows="14" readonly>' + h(text) + '</textarea>');
+    var ta = $('textarea', d); ta.focus(); ta.select();
+  }
+  /** Short, emoji-marked text for a WhatsApp group. WhatsApp shows *text* as bold and _text_ as italic. */
+  function whatsappReport(r, conclusion) {
+    var T = r.totals, lines = [];
+    lines.push('📋 *' + r.program + '*');
+    lines.push('*Combined report, ' + (r.period === 'meeting' ? r.period_label : r.period_label) + '*');
+    r.meetings.forEach(function (m) { lines.push('📖 _' + m.theme + '_' + (m.scripture ? ' (' + m.scripture + ')' : '')); });
+    lines.push('');
+    lines.push('👥 *Attendance:* ' + T.present + ' (' + T.returning + ' returning, ' + T.first_timers + ' new)');
+    lines.push('🙏 *Decisions:* ' + T.decisions + (T.decisions ? ', ' + kindsText(T.decision_kinds) : ''));
+    lines.push('🏠 *Centers reported:* ' + T.reported + ' of ' + T.centers);
+    if (r.previous) lines.push('📈 ' + r.previous.label + ': ' + r.previous.present + ' present');
+    lines.push('');
+    lines.push('*Per center*');
+    r.centers.forEach(function (c) {
+      if (!c.reported) { lines.push('⚠️ ' + c.name + ': no report yet'); return; }
+      var late = c.sessions.some(function (s) { return s.punctuality === 'late'; });
+      lines.push('📍 ' + c.name + ': ' + c.present + ' present' + (c.first_timers ? ' (' + c.first_timers + ' new)' : '') +
+        (c.decisions ? ', ' + plural(c.decisions, 'decision') : '') + (late ? ', started late' : ''));
+    });
+    var notes = [];
+    r.centers.forEach(function (c) { c.sessions.forEach(function (s) { if (s.recommendations) notes.push('• ' + c.name + ': ' + s.recommendations.replace(/\s+/g, ' ').slice(0, 160)); }); });
+    if (notes.length) { lines.push(''); lines.push('*Recommendations*'); lines = lines.concat(notes); }
+    lines.push('');
+    lines.push('📝 *Conclusion*');
+    lines.push(String(conclusion || '').trim());
+    lines.push('');
+    lines.push('_' + r.org_name + '_');
+    return lines.join('\n');
+  }
+
+  /* ---------- message all children ---------- */
+  function cleanGreeting(t) { return t.replace(/\s+([,.!?])/g, '$1').replace(/\s{2,}/g, ' ').replace(/^\s+|\s+$/g, ''); }
+  /** One message to every active child of a center: group SMS (Android), WhatsApp one by one, or copy for a WhatsApp group. */
+  function messageAll(centerId, kids) {
+    var c = jobCenters('followup').filter(function (x) { return x.center_id === centerId; })[0] || { name: '' };
+    var today = me.today || new Date().toISOString().slice(0, 10);
+    var known = ((Api.store.get(ckey('meetings')) || {}).meetings || []).concat((homeData && homeData.meetings) || []);
+    var next = known.filter(function (m) { return m.date >= today && m.program_id === c.program_id && m.status !== 'closed'; })
+      .sort(function (a, b) { return a.date < b.date ? -1 : 1; })[0];
+    var start = next ? 'Hello {name}, our next meeting is on {date}: "{theme}". We look forward to seeing you there!'
+      : 'Hello {name}, ';
+    var d = sheet('Message all children of ' + c.name,
+      '<div class="seg"><label><input type="radio" name="aud" value="child" checked><span>Each child</span></label><label><input type="radio" name="aud" value="guardian"><span>Guardians</span></label></div>' +
+      '<p class="small muted" id="aud-note"></p>' +
+      '<label class="field">Message<textarea name="msg" rows="5" maxlength="700">' + h(start) + '</textarea></label>' +
+      '<p class="small muted">{name} becomes each person\'s name when you send one by one. {child} {center} {date} {theme} also work.</p>' +
+      '<div class="stack" style="margin-top:12px">' +
+        '<a class="btn block" id="sms-all" href="#">' + ICON.msg + ' SMS to everyone at once</a>' +
+        '<button type="button" class="btn ghost block" id="one-by-one">WhatsApp or SMS, one by one</button>' +
+        '<button type="button" class="btn quiet block" id="copy-msg">Copy the message for a WhatsApp group</button></div>' +
+      '<p class="small muted" style="margin-top:8px">Sending to everyone at once works on most Android phones. On an iPhone, send one by one.</p>');
+    function people() {
+      var aud = d.querySelector('[name=aud]:checked').value, seen = {}, out = [], none = 0;
+      kids.forEach(function (k) {
+        var toChild = aud === 'child' && k.phone, num = waNumber(toChild ? k.phone : k.guardian_phone);
+        if (!num) { none++; return; }
+        if (seen[num]) return;   // brothers with the same guardian get one message
+        seen[num] = true;
+        out.push({ k: k, num: num, name: toChild ? firstName(k.name) : (k.guardian_name || ''), to: toChild ? 'child' : 'guardian' });
+      });
+      return { list: out, none: none };
+    }
+    function ctx(name, k) { return { name: name, child: k ? firstName(k.name) : '', center: c.name, date: next ? fmtDate(next.date) : '', theme: next ? next.theme : '' }; }
+    function text(name, k) { return cleanGreeting(fillTemplate(d.querySelector('[name=msg]').value, ctx(name, k))); }
+    function generic() { return cleanGreeting(fillTemplate(d.querySelector('[name=msg]').value.replace(/\{name\}/g, '').replace(/\{child\}/g, ''), ctx('', null))); }
+    function update() {
+      var p = people(), aud = d.querySelector('[name=aud]:checked').value;
+      $('#aud-note', d).textContent = p.list.length + (p.list.length === 1 ? ' person' : ' people') +
+        (aud === 'child' ? ' (the guardian when a child has no phone)' : '') + (p.none ? '. ' + p.none + ' without any phone number are left out.' : '.');
+      $('#sms-all', d).href = 'sms:' + p.list.map(function (x) { return '+' + x.num; }).join(',') + '?body=' + encodeURIComponent(generic());
+    }
+    var log = function (channel, n) {
+      var body = { center_id: centerId, channel: channel, count: n, audience: d.querySelector('[name=aud]:checked').value, message: d.querySelector('[name=msg]').value };
+      Api.call('logBroadcast', body).catch(function (e) { if (e.code === 'OFFLINE') Sync.add('logBroadcast', body, 'Message to all of ' + c.name); });
+    };
+    $all('[name=aud]', d).forEach(function (i) { i.onchange = update; });
+    d.querySelector('[name=msg]').oninput = update;
+    $('#sms-all', d).addEventListener('click', function () { log('sms', people().list.length); });
+    $('#copy-msg', d).onclick = function () {
+      var t = generic();
+      (navigator.clipboard && window.isSecureContext ? navigator.clipboard.writeText(t) : Promise.reject()).then(function () { toast('Copied. Paste it in the WhatsApp group.'); log('whatsapp', 0); },
+        function () { showText(t); });
+    };
+    $('#one-by-one', d).onclick = function () {
+      var p = people().list; if (!p.length) { toast('Nobody has a phone number.', true); return; }
+      d.close(); log('whatsapp', p.length);
+      var left = p.length;
+      var q = sheet(p.length + (p.length === 1 ? ' message' : ' messages'),
+        '<p class="small muted">Tap WhatsApp or SMS, send, come back for the next one.</p>' + p.map(function (x, i) {
+          var t = text(x.name, x.k);
+          return '<div class="qi" data-i="' + i + '"><p><strong>' + h(x.to === 'child' ? x.k.name : (x.k.guardian_name || 'Guardian') + ' (guardian of ' + firstName(x.k.name) + ')') + '</strong></p>' +
+            '<p class="small tpl">' + h(t) + '</p><div class="cbtns"><a class="btn" target="_blank" rel="noopener" href="https://wa.me/' + h(x.num) + '?text=' + encodeURIComponent(t) + '" data-go>WhatsApp</a>' +
+            '<a class="btn ghost" href="sms:+' + h(x.num) + '?body=' + encodeURIComponent(t) + '" data-go>SMS</a><button type="button" class="btn quiet" data-skip>Skip</button></div></div>';
+        }).join('') + '<p class="small" id="q-left"></p>');
+      var count = function () { $('#q-left', q).textContent = left ? left + ' still to send.' : 'All done.'; };
+      $all('.qi', q).forEach(function (row) {
+        var done = function () { if (row.classList.contains('done')) return; row.classList.add('done'); left--; count(); };
+        $all('[data-go]', row).forEach(function (a) { a.addEventListener('click', done); });
+        $('[data-skip]', row).onclick = done;
+      });
+      count();
+    };
+    update();
+  }
+
+  /* ---------- offline and sync ---------- */
+  function viewSync(el) {
+    var pk = me ? Api.store.get(ckey('pack')) : null, items = Sync.items();
+    var kids = pk ? Object.keys(pk.participants).reduce(function (a, k) { return a + pk.participants[k].length; }, 0) : 0;
+    el.innerHTML = '<a href="#/more" class="small">‹ More</a><h1>Offline and sync</h1>' +
+      '<div class="card"><p><strong>' + (navigator.onLine ? 'Online' : 'No connection') + '</strong></p>' +
+        '<p class="small muted">' + (items.length ? plural(items.length, 'save') + ' on this phone not sent yet.' : 'Everything is sent.') + '</p>' +
+        (items.length && navigator.onLine ? '<button type="button" class="btn block" id="send-now">Send now</button>' : '') + '</div>' +
+      (items.length ? '<div class="list">' + items.map(function (x) {
+        return '<div class="row static"><span class="grow"><span class="name">' + h(x.label) + '</span><br><span class="sub">Saved ' + h(new Date(x.at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })) + '</span>' +
+          (x.state === 'failed' ? '<br><span class="badge bad">Not accepted</span><br><span class="small">' + h(x.error) + '</span>' : '<br><span class="badge warn">Waiting</span>') + '</span>' +
+          (x.state === 'failed' ? '<span class="stack"><button type="button" class="btn quiet mini" data-retry="' + h(x.id) + '">Try again</button> <button type="button" class="btn danger mini" data-drop="' + h(x.id) + '">Remove</button></span>' : '') + '</div>';
+      }).join('') + '</div>' : '') +
+      '<section class="card"><h2>Downloaded to this phone</h2>' +
+        (!onOwnPhone() ? '<p class="small">This is a borrowed phone, so nothing is downloaded. Attendance needs internet here, or waits on the phone until the app is online.</p>'
+          : !canWorkOffline() ? '<p class="small muted">Your role does not record attendance, so nothing needs downloading.</p>'
+          : '<p class="small">' + (pk ? plural(kids, 'child', 'children') + ', ' + plural(Object.keys(pk.sessions).length, 'open report') + ' and the follow-up list, downloaded ' +
+              h(new Date(pk.at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })) + '.' : 'Not downloaded yet.') + '</p>' +
+            '<p class="small muted">It refreshes by itself when the app is open with internet. With no signal you can still take attendance and log follow-ups; they are sent later.</p>' +
+            (navigator.onLine ? '<button type="button" class="btn ghost block" id="pack-now">Download now</button>' : '')) + '</section>';
+    var sn = $('#send-now', el); if (sn) sn.onclick = function () { busy(true); Sync.flush().then(function () { busy(false); viewSync(el); }); };
+    var pn = $('#pack-now', el); if (pn) pn.onclick = function () { busy(true); downloadPack(true).then(function (x) { busy(false); toast(x ? 'Downloaded' : 'Could not download. Try again.', !x); viewSync(el); }); };
+    $all('[data-retry]', el).forEach(function (b) { b.onclick = function () { Sync.retry(b.dataset.retry).then(function () { viewSync(el); }); }; });
+    $all('[data-drop]', el).forEach(function (b) {
+      b.onclick = function () { if (confirm('Remove this save from the phone? It will not be sent.')) { Sync.remove(b.dataset.drop); viewSync(el); } };
+    });
+  }
+
+  /* ---------- download data (CSV) ---------- */
+  function exportSheet() {
+    var cs = me.centers.filter(function (c) { return c.status === 'active'; });
+    sheet('Download data',
+      '<p class="small muted">A CSV file opens in Excel or Google Sheets. It holds children\'s personal details: keep it safe and delete it when done.</p>' +
+      '<label class="field">What<select name="what"><option value="children">Children (names, guardians, consent)</option><option value="attendance">Attendance per meeting</option>' +
+        '<option value="decisions">Decisions</option><option value="followups">Follow-up log</option></select></label>' +
+      (cs.length > 1 ? '<label class="field">Center<select name="center"><option value="">All my centers</option>' + cs.map(function (c) { return '<option value="' + h(c.center_id) + '">' + h(centerLabel(c)) + '</option>'; }).join('') + '</select></label>' : ''),
+      'Download', function (form) {
+        var f = form.elements;
+        return Api.call('exportData', { what: f.what.value, center_id: f.center ? f.center.value || undefined : undefined }).then(function (r) {
+          var url = URL.createObjectURL(new Blob([r.csv], { type: 'text/csv;charset=utf-8' }));
+          var a = document.createElement('a'); a.href = url; a.download = r.filename; document.body.appendChild(a); a.click(); a.remove();
+          setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+          toast(plural(r.rows, 'row') + ' downloaded');
+        });
+      });
+  }
+
+  /* ---------- install ---------- */
+  function installRow() {
+    if (window.matchMedia && matchMedia('(display-mode: standalone)').matches) return '';
+    if (window.__installPrompt) return '<button type="button" class="row" id="install"><span class="grow"><span class="name">Install the app</span><br><span class="sub">Opens from your home screen like any other app</span></span></button>';
+    if (/iPhone|iPad/.test(navigator.userAgent)) return '<div class="row static"><span class="grow"><span class="name">Install on iPhone</span><br><span class="sub">In Safari tap Share, then "Add to Home Screen"</span></span></div>';
+    return '';
+  }
+
   /* ---------- more ---------- */
   function viewMore(el) {
     el.innerHTML = '<h1>More</h1>' +
       '<div class="list"><button type="button" class="row" id="my"><span class="avatar">' + h(initials(me.user.name)) + '</span><span class="grow"><span class="name">' + h(me.user.name) + '</span><br><span class="sub">' +
         h(ROLE[me.user.role]) + (me.user.email ? ' · ' + h(me.user.email) : me.user.phone ? ' · ' + h(me.user.phone) : '') + '</span></span></button></div>' +
       '<h3>Work</h3><div class="list">' +
+        '<a class="row" href="#/tasks"><span class="grow"><span class="name">Tasks</span><br><span class="sub">' + (me.can.assign_tasks ? 'Hand a report, follow-up or children to someone in your team' : 'Jobs handed to you') + '</span></span></a>' +
+        '<a class="row" href="#/reports"><span class="grow"><span class="name">Combined report</span><br><span class="sub">For a meeting or a month: WhatsApp version and print</span></span></a>' +
+        '<a class="row" href="#/sync"><span class="grow"><span class="name">Offline and sync</span><br><span class="sub">' + (Sync.waiting() + Sync.failed() ? (Sync.waiting() + Sync.failed()) + ' not sent yet' : 'What is on this phone') + '</span></span></a>' +
+        (me.can.record ? '<button type="button" class="row" id="export"><span class="grow"><span class="name">Download data (CSV)</span><br><span class="sub">Children, attendance, decisions, follow-ups</span></span></button>' : '') +
+        installRow() +
+        (me.can.remind ? '<a class="row" href="#/reminders"><span class="grow"><span class="name">Reminders</span><br><span class="sub">Report reminders by email, WhatsApp or SMS</span></span></a>' : '') +
         (me.can.record ? '<a class="row" href="#/stats"><span class="grow"><span class="name">Statistics</span><br><span class="sub">Attendance, decisions, centers compared</span></span></a>' : '') +
         (me.can.manage_users || me.user.role === 'ASSISTANT' ? '<a class="row" href="#/people"><span class="grow"><span class="name">Team</span><br><span class="sub">' + (me.can.manage_users ? 'Add people, reset PINs, switch access' : 'The people of your center') + '</span></span></a>' : '') +
         (me.can.record ? '<a class="row" href="#/templates"><span class="grow"><span class="name">Message templates</span><br><span class="sub">Texts for WhatsApp and SMS follow-up</span></span></a>' : '') +
@@ -1143,12 +2017,18 @@
         '<button type="button" class="row" id="settings"><span class="grow"><span class="name">System settings</span><br><span class="sub">Name, sign-in, reminders</span></span></button>' +
         '<button type="button" class="row" id="shares"><span class="grow"><span class="name">Sharing between programs</span><br><span class="sub">Let one program see another\'s figures</span></span></button></div>' : '') +
       '<button class="btn danger block" id="out">Sign out</button>' +
-      '<p class="small muted center">Outreach Tracker · phase 4</p>';
+      '<p class="small muted center">Outreach Tracker, version 7</p>';
     $('#my').onclick = myDetailsForm;
+    var ex = $('#export', el); if (ex) ex.onclick = exportSheet;
+    var ins = $('#install', el);
+    if (ins) ins.onclick = function () { var p = window.__installPrompt; window.__installPrompt = null; p.prompt(); p.userChoice.then(function () { render(); }); };
     $('#out').onclick = signOut;
     if (me.can.settings) { $('#settings').onclick = settingsForm; $('#shares').onclick = sharesForm; }
   }
   function signOut() {
+    var n = Sync.waiting() + Sync.failed();
+    if (n && !confirm(plural(n, 'save') + ' on this phone ' + (n === 1 ? 'has' : 'have') + ' not been sent. Sign out anyway? ' +
+      (onOwnPhone() ? 'They stay on this phone and are sent the next time you sign in here.' : 'On a borrowed phone they are lost.'))) return;
     var token = Auth.sessionToken();
     var done = function () { Auth.signOut(); showLogin(); };
     if (token) { busy(true); Api.call('logout', { token: token }).catch(function () {}).then(function () { busy(false); done(); }); }
@@ -1198,10 +2078,16 @@
   function start() {
     if (!Api.configured()) { showSetupNeeded(); return Promise.resolve(); }
     if (!Auth.has()) { showLogin(); return Promise.resolve(); }
-    root.innerHTML = '<div class="boot"><div class="spinner"></div><p>Signing you in…</p></div>';
-    return refreshMe().then(render).catch(function (e) {
+    var saved = Api.store.get('boot');
+    if (saved && saved.me) {
+      // Open at once with what this phone remembers; the server's answer replaces it a moment later.
+      me = saved.me; homeData = saved.home; Sync.setUser(me.user.user_id); render();
+      return homeFresh();
+    }
+    root.innerHTML = '<div class="boot"><img src="img/logo-256.png" alt="" width="88" height="88"><p>Signing you in…</p></div>';
+    return boot().then(render).catch(function (e) {
       if (me === null && Auth.has()) {     // network trouble, not a refusal
-        root.innerHTML = '<div class="boot"><p>' + h(e.message) + '</p><button class="btn" id="retry">Try again</button></div>';
+        root.innerHTML = '<div class="boot"><img src="img/logo-256.png" alt="" width="88" height="88"><p>' + h(e.message) + '</p><button class="btn" id="retry">Try again</button></div>';
         $('#retry').onclick = start;
       }
     });
@@ -1209,12 +2095,14 @@
   Auth.on('signedIn', start);
   Auth.on('lost', function (err) { $all('dialog').forEach(function (d) { d.close(); }); busy(false); showLogin(err && err.code !== 'AUTH_REQUIRED' ? err.message : ''); });
   VIEWS = { home: viewHome, meetings: viewMeetings, take: viewTake, followup: viewFollowUp, participants: viewParticipants, people: viewPeople,
-    centers: viewCenters, stats: viewStats, templates: viewTemplates, more: viewMore };
+    centers: viewCenters, stats: viewStats, templates: viewTemplates, tasks: viewTasks, notifications: viewNotifications,
+    reminders: viewReminders, reports: viewReports, sync: viewSync, more: viewMore };
   window.addEventListener('hashchange', function () {
     if (!me) return;
     if (leaveGuard && !leaveGuard()) { history.replaceState(null, '', currentHash || '#/home'); return; }
     window.onbeforeunload = null;
     render();
+    if (route().page === 'home') homeFresh();
   });
   start();
 })();

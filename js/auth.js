@@ -8,14 +8,16 @@
     try { return JSON.parse(sessionStorage.getItem(KEY) || localStorage.getItem(KEY) || 'null'); } catch (e) { return null; }
   }
   function save(a) {
-    clear();
+    clear(true);
     // "This is not my phone": kept only until the tab closes.
     try { (a.shared ? sessionStorage : localStorage).setItem(KEY, JSON.stringify(a)); } catch (e) { /* private mode */ }
     memory = a;
   }
-  function clear() {
+  /** keepScreens: a renewed sign-in of the same person keeps the remembered screens; signing out removes them. */
+  function clear(keepScreens) {
     memory = null;
     try { sessionStorage.removeItem(KEY); localStorage.removeItem(KEY); } catch (e) { /* ignore */ }
+    if (!keepScreens && window.Api && window.Api.store) window.Api.store.clear();
   }
   var memory = load();
 

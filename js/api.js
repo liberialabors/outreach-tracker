@@ -35,5 +35,26 @@
     });
   }
 
-  window.Api = { call: call, configured: function () { return /^https:\/\/|^\/|^http:\/\/localhost/.test(cfg.API_URL || ''); } };
+  /* A small store of the last answers, so screens appear at once and refresh behind.
+     Kept on the phone only for people on their own phone; on a borrowed phone it lives in memory and is gone when the app closes. */
+  var mem = {}, PREFIX = 'ot.c.';
+  function persistent() { return !(window.Auth && window.Auth.isShared()); }
+  var store = {
+    get: function (key) {
+      if (mem[key] !== undefined) return mem[key];
+      if (!persistent()) return null;
+      try { var v = localStorage.getItem(PREFIX + key); return v ? (mem[key] = JSON.parse(v)) : null; } catch (e) { return null; }
+    },
+    set: function (key, val) {
+      mem[key] = val;
+      if (!persistent()) return;
+      try { localStorage.setItem(PREFIX + key, JSON.stringify(val)); } catch (e) { /* storage full: memory only */ }
+    },
+    clear: function () {
+      mem = {};
+      try { Object.keys(localStorage).forEach(function (k) { if (k.indexOf(PREFIX) === 0) localStorage.removeItem(k); }); } catch (e) { /* ignore */ }
+    }
+  };
+
+  window.Api = { call: call, store: store, configured: function () { return /^https:\/\/|^\/|^http:\/\/localhost/.test(cfg.API_URL || ''); } };
 })();
