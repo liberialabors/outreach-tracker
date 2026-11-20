@@ -107,5 +107,67 @@
     return new Blob(zip(files.map(function (f) { return { name: f[0], data: enc.encode(f[1]) }; })),
       { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   }
-  window.Xlsx = { build: build };
+  /* ---- reading: the first sheet of an .xlsx file, as rows of text (needs DecompressionStream: Chrome 80+, Safari 16.4+) ---- */
+  function inflate(bytes) {
+    if (typeof DecompressionStream === 'undefined') return Promise.reject(new Error('This browser cannot open Excel files. Save the file as CSV and choose that.'));
+    var ds = new DecompressionStream('deflate-raw');
+    var out = new Blob([bytes]).stream().pipeThrough(ds);
+    return new Response(out).arrayBuffer().then(function (b) { return new Uint8Array(b); });
+  }
+  function unzip(buf) {
+    var u = new Uint8Array(buf), v = new DataView(buf), e = -1;
+    for (var i = u.length - 22; i >= Math.max(0, u.length - 66000); i--) if (v.getUint32(i, true) === 0x06054b50) { e = i; break; }
+    if (e < 0) throw new Error('This is not an Excel (.xlsx) file.');
+    var n = v.getUint16(e + 10, true), p = v.getUint32(e + 16, true), files = {}, dec = new TextDecoder();
+    for (var k = 0; k < n; k++) {
+      if (v.getUint32(p, true) !== 0x02014b50) break;
+      var method = v.getUint16(p + 10, true), csize = v.getUint32(p + 20, true), nl = v.getUint16(p + 28, true),
+        xl = v.getUint16(p + 30, true), cl = v.getUint16(p + 32, true), off = v.getUint32(p + 42, true);
+      var name = dec.decode(u.subarray(p + 46, p + 46 + nl));
+      var start = off + 30 + v.getUint16(off + 26, true) + v.getUint16(off + 28, true);
+      files[name] = { method: method, data: u.subarray(start, start + csize) };
+      p += 46 + nl + xl + cl;
+    }
+    return files;
+  }
+  function text(files, name) {
+    var f = files[name]; if (!f) return Promise.resolve(null);
+    return (f.method === 0 ? Promise.resolve(f.data) : inflate(f.data)).then(function (b) { return new TextDecoder().decode(b); });
+  }
+  function xml(s) { return new DOMParser().parseFromString(s, 'application/xml'); }
+  function byTag(node, tag) { return Array.prototype.slice.call(node.getElementsByTagNameNS('*', tag)); }
+  function colIndex(ref) { var m = /^[A-Z]+/.exec(ref || '') || ['A'], n = 0; for (var i = 0; i < m[0].length; i++) n = n * 26 + m[0].charCodeAt(i) - 64; return n - 1; }
+  function read(buf) {
+    var files;
+    try { files = unzip(buf); } catch (e) { return Promise.reject(e); }
+    return Promise.all([text(files, 'xl/workbook.xml'), text(files, 'xl/_rels/workbook.xml.rels'), text(files, 'xl/sharedStrings.xml')]).then(function (t) {
+      var target = 'xl/worksheets/sheet1.xml';
+      if (t[0] && t[1]) {
+        var sh = byTag(xml(t[0]), 'sheet')[0], rid = sh && (sh.getAttribute('r:id') || sh.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id'));
+        byTag(xml(t[1]), 'Relationship').forEach(function (r) {
+          if (r.getAttribute('Id') === rid) { var tg = r.getAttribute('Target'); target = tg.charAt(0) === '/' ? tg.slice(1) : 'xl/' + tg.replace(/^\.\//, ''); }
+        });
+      }
+      var shared = t[2] ? byTag(xml(t[2]), 'si').map(function (si) { return byTag(si, 't').map(function (x) { return x.textContent; }).join(''); }) : [];
+      return text(files, target).then(function (sx) {
+        if (!sx) throw new Error('The Excel file has no sheet.');
+        return byTag(xml(sx), 'row').map(function (r) {
+          var out = [];
+          byTag(r, 'c').forEach(function (c) {
+            var tp = c.getAttribute('t'), vEl = byTag(c, 'v')[0], val = vEl ? vEl.textContent : '';
+            if (tp === 's') val = shared[Number(val)] || '';
+            else if (tp === 'inlineStr') val = byTag(c, 't').map(function (x) { return x.textContent; }).join('');
+            else if (tp === 'b') val = val === '1' ? 'yes' : 'no';
+            out[colIndex(c.getAttribute('r'))] = val;
+          });
+          for (var i = 0; i < out.length; i++) if (out[i] === undefined) out[i] = '';
+          return out;
+        }).filter(function (r) { return r.some(function (x) { return String(x).trim() !== ''; }); });
+      });
+    });
+  }
+  /** Excel stores dates as day numbers (45000 = 2023-03-15); turn one into yyyy-mm-dd. */
+  function serialDate(n) { var d = new Date(Date.UTC(1899, 11, 30) + Math.round(Number(n)) * 86400000); return d.toISOString().slice(0, 10); }
+
+  window.Xlsx = { build: build, read: read, serialDate: serialDate };
 })();

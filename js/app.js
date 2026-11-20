@@ -478,7 +478,7 @@
     var html =
       '<section class="band"><h1>Hello, ' + h(first) + '</h1><p class="sub">' + h(ROLE[me.user.role]) + (me.scope.all ? ', all programs' : '') + '</p>' +
       (tm ? '<p class="month">' + h(monthName) + ' so far, ' + plural(tm.reports, 'report') + '</p>' : '') + '</section>' +
-      homeCards(H, today);
+      serverOldHtml() + homeCards(H, today);
     if (Auth.isShared()) html += '<div class="card alert-card"><span class="grow"><strong>Borrowed phone</strong><br><span class="small">You will be signed out when you close the app. Tap More, then Sign out, when you finish.</span></span></div>';
     if (H.to_complete && H.to_complete.count) {
       var tc = H.to_complete.count;
@@ -1001,7 +1001,19 @@
   }
 
   /* ---------- participants ---------- */
-  var pState = { center: '', q: '', show: 'active' };
+  var pState = { center: '', q: '', show: 'active', how: '' };
+  var HOW = { import: 'Imported', app: 'Added by hand', first_timer: 'First-timer' };
+  /** The imports in a list of children, newest first: [{ id, date, count }]. */
+  function importsOf(list) {
+    var by = {};
+    list.forEach(function (p) { if (p.added_via === 'import' && p.import_id) { var x = by[p.import_id] = by[p.import_id] || { id: p.import_id, date: String(p.created_at).slice(0, 10), count: 0 }; x.count++; } });
+    return Object.keys(by).map(function (k) { return by[k]; }).sort(function (a, b) { return b.date.localeCompare(a.date) || b.id.localeCompare(a.id); });
+  }
+  function howBadge(p) {
+    if (p.added_via === 'import') return '<span class="badge how">Imported ' + h(shortDate(String(p.created_at).slice(0, 10))) + '</span>';
+    if (p.added_via === 'first_timer') return '<span class="badge how">First came ' + h(shortDate(p.join_date)) + '</span>';
+    return '';
+  }
   function recordCenters(kind) { return jobCenters(kind || 'children'); }
   function viewParticipants(el, args) {
     if (args && args[0] === 'incomplete') { pState.show = 'incomplete'; history.replaceState(null, '', '#/participants'); }
@@ -1013,18 +1025,30 @@
       var counts = { active: 0, inactive: 0, incomplete: 0 };
       list.forEach(function (p) { counts[p.status]++; if (p.incomplete || !p.guardian_consent) counts.incomplete++; });
       el.innerHTML = '<div class="head"><h1>Children</h1><div><button class="btn mini" id="msg-all">' + ICON.msg + ' Message all</button> ' +
-        '<button class="btn ghost mini" id="import">Import CSV</button></div></div>' +
+        '<button class="btn ghost mini" id="import">Import</button></div></div>' +
         (centers.length > 1 ? '<label class="field" style="margin-top:0">Center<select id="pc">' + centers.map(function (c) {
           return '<option value="' + h(c.center_id) + '"' + (c.center_id === pState.center ? ' selected' : '') + '>' + h(centerLabel(c)) + '</option>'; }).join('') + '</select></label>' : '') +
         '<div class="seg small-seg">' + [['active', 'Active ' + counts.active], ['inactive', 'Inactive ' + counts.inactive], ['incomplete', 'To complete ' + counts.incomplete]].map(function (x) {
           return '<label><input type="radio" name="show" value="' + x[0] + '"' + (pState.show === x[0] ? ' checked' : '') + '><span>' + x[1] + '</span></label>'; }).join('') + '</div>' +
-        '<input type="search" id="pq" placeholder="Find a name" value="' + h(pState.q) + '" autocomplete="off">' +
+        '<div class="pfilters"><input type="search" id="pq" placeholder="Find a name" value="' + h(pState.q) + '" autocomplete="off">' +
+        '<select id="phow" aria-label="How they were added"><option value="">Everyone</option>' +
+          (function () {
+            var imps = importsOf(list), o = '';
+            if (imps.length) o += '<option value="import">Imported (all, ' + imps.reduce(function (a, x) { return a + x.count; }, 0) + ')</option>' +
+              imps.map(function (x) { return '<option value="' + h(x.id) + '">Imported ' + h(shortDate(x.date)) + ' (' + x.count + ')</option>'; }).join('');
+            var ft = list.filter(function (p) { return p.added_via === 'first_timer'; }).length, ap = list.filter(function (p) { return (p.added_via || 'app') === 'app'; }).length;
+            if (ft) o += '<option value="first_timer">Came as first-timers (' + ft + ')</option>';
+            if (ap) o += '<option value="app">Added by hand (' + ap + ')</option>';
+            return o;
+          })() + '</select></div>' +
         '<div class="kids" id="plist"></div>' +
         '<button class="btn fab" id="add-p">+ Add child</button>';
       function draw() {
         var q = pState.q.toLowerCase();
         var shown = list.filter(function (p) {
           if (pState.show === 'incomplete' ? !(p.incomplete || !p.guardian_consent) : p.status !== pState.show) return false;
+          var hw = pState.how;
+          if (hw && !(hw === p.import_id || (hw === 'import' && p.added_via === 'import') || (hw === (p.added_via || 'app') && HOW[hw]))) return false;
           return !q || p.name.toLowerCase().indexOf(q) !== -1;
         });
         $('#plist', el).innerHTML = shown.length ? shown.map(function (p) {
@@ -1033,7 +1057,7 @@
             '<span class="grow"><span class="name">' + h(p.name) + '</span><br><span class="sub">' + (p.age !== '' && p.age !== undefined ? h(p.age) + ' yrs' : 'No date of birth') +
             (p.guardian_name ? ' · ' + h(p.guardian_name) : '') + '</span><br>' +
             (pState.show === 'incomplete' && (p.missing || []).length ? '<span class="small muted">Missing: ' + h(p.missing.join(', ')) + '</span><br>' : '') +
-            (p.status === 'inactive' ? '<span class="badge off">Inactive</span>' : '') +
+            (p.status === 'inactive' ? '<span class="badge off">Inactive</span>' : '') + howBadge(p) +
             (p.incomplete ? '<span class="badge warn">Details missing</span>' : '') +
             (!p.guardian_consent ? '<span class="badge bad">No guardian consent</span>' : '') + '</span><span class="chev" aria-hidden="true">›</span></button>' +
             (contacts ? '<div class="kid-c">' + contacts + '</div>' : '<p class="kid-c small muted">No phone number yet</p>') + '</div>';
@@ -1045,6 +1069,9 @@
       var pc = $('#pc', el); if (pc) pc.onchange = function () { pState.center = pc.value; viewParticipants(el); };
       $all('[name=show]', el).forEach(function (i) { i.onchange = function () { pState.show = i.value; draw(); }; });
       $('#pq', el).oninput = function () { pState.q = this.value.trim(); draw(); };
+      var ph = $('#phow', el);
+      if (!$('option[value="' + pState.how + '"]', ph)) pState.how = '';
+      ph.value = pState.how; ph.onchange = function () { pState.how = ph.value; draw(); };
       $('#add-p', el).onclick = function () {
         participantForm(null, pState.center, function (vals) {
           return Api.call('saveParticipant', vals).then(function (r) { toast(r.participant.name + ' added'); render(); });
@@ -1063,11 +1090,12 @@
    */
   function participantForm(p, centerId, onSave, firstTimer) {
     var v = p || { name: '', birth_date: '', phone: '', guardian_name: '', guardian_phone: '', school: '', guardian_consent: false };
-    var needPhone = !(me.rules && me.rules.require_child_phone === false);
+    var needPhone = !!(me.rules && me.rules.require_child_phone === true);
     var phoneHint = needPhone ? 'The child\'s or the guardian\'s: at least one is needed' : 'Optional';
     var today = me.today || new Date().toISOString().slice(0, 10);
     var d = sheet(p ? 'Edit ' + p.name : firstTimer ? 'Add a first-timer' : 'Add a child',
       '<label class="field">Full name<input type="text" name="name" value="' + h(v.name) + '" autocomplete="off" required></label>' +
+      '<p class="small muted">Only the name is needed. Anything you leave empty can be filled in later.</p>' +
       '<label class="field">Date of birth<span class="hint">Optional now. You can add it later.</span><input type="date" name="birth_date" max="' + h(today) + '" min="1990-01-01" value="' + h(v.birth_date) + '"></label>' +
       (needPhone ? '<p class="small muted phone-rule">' + ICON.phone + ' Give at least one phone number: the child\'s or the guardian\'s.</p>' : '') +
       '<label class="field">Guardian\'s name<span class="hint">Optional</span><input type="text" name="guardian_name" value="' + h(v.guardian_name) + '" autocomplete="off"></label>' +
@@ -1075,7 +1103,7 @@
       '<label class="field">Child\'s own phone<span class="hint">' + phoneHint + '</span><input type="tel" name="phone" inputmode="tel" value="' + h(v.phone) + '" placeholder="0880 000 000"></label>' +
       '<label class="field">School<span class="hint">Optional</span><input type="text" name="school" value="' + h(v.school) + '"></label>' +
       '<label class="check consent"><input type="checkbox" name="consent"' + (v.guardian_consent ? ' checked' : '') + '><span><strong>The guardian agrees</strong> that we keep these details to follow up with the child.' +
-        (firstTimer ? '<br><span class="small muted">Needed before a first-timer can be added.</span>' : '') + '</span></label>' +
+        '</span></label>' +
       '<div class="later card" hidden><p><strong>Some details are missing</strong></p><p class="small later-what"></p>' +
         '<p class="small muted">You can fill them now, or save and fill them later. The child is then listed under Children → To complete, with a reminder on Home.</p>' +
         '<div class="stack"><button type="button" class="btn quiet block" data-l="now">Fill them now</button><button type="button" class="btn block" data-l="later">Save, I will fill them later</button></div></div>',
@@ -1090,17 +1118,16 @@
         if (gd && gd < 7) throw new Error('The guardian\'s phone number looks too short. Correct it or leave it empty.');
         if (cd && cd < 7) throw new Error('The child\'s phone number looks too short. Correct it or leave it empty.');
         if (needPhone && !gd && !cd) { f.guardian_phone.focus(); throw new Error('Enter at least one phone number: the child\'s or the guardian\'s.'); }
-        if (firstTimer && !vals.guardian_consent) throw new Error('Tick the guardian consent to add a first-timer.');
         var missing = [];
+        if (!gd && !cd) missing.push('a phone number (child\'s or guardian\'s)');
         if (!vals.birth_date) missing.push('date of birth');
-        if (!gd && !cd) missing.push('a phone number');
         if (!vals.guardian_consent) missing.push('the guardian\'s consent');
         if (missing.length && form.dataset.later !== '1') {   // ask once: fill now or later
           $('.later-what', box).textContent = 'Not filled in: ' + missing.join(', ') + '.';
           box.hidden = false; box.scrollIntoView({ block: 'nearest' });
           $('[data-l=now]', box).onclick = function () {
             box.hidden = true;
-            (!vals.birth_date ? f.birth_date : !gd && !cd ? f.guardian_phone : f.consent).focus();
+            (!gd && !cd ? f.guardian_phone : !vals.birth_date ? f.birth_date : f.consent).focus();
           };
           $('[data-l=later]', box).onclick = function () { form.dataset.later = '1'; form.requestSubmit(); };
           return true;   // keep the form open
@@ -1127,6 +1154,8 @@
         row('Guardian\'s phone', p.guardian_phone ? h(p.guardian_phone) : '<span class="muted">None</span>') +
         row('School', p.school ? h(p.school) : '<span class="muted">Not filled in</span>') +
         row('Joined', h(fmtDate(p.join_date))) +
+        row('Added', h(p.added_via === 'import' ? 'By import on ' + fmtDate(String(p.created_at).slice(0, 10)) : p.added_via === 'first_timer' ? 'As a first-timer at the ' + fmtDate(p.join_date) + ' meeting' :
+          'By hand on ' + fmtDate(String(p.created_at).slice(0, 10))) + (p.added_by ? ' by ' + h(p.added_by) : '')) +
         row('Consent', p.guardian_consent ? 'Given ' + h(fmtDate(p.consent_date)) : '<span class="badge bad">Not recorded</span>') +
       '</dl>' +
       '<div class="stack" style="margin-top:16px">' +
@@ -1187,42 +1216,124 @@
     return { columns: map.filter(Boolean), unknown: head.filter(function (x, i) { return !map[i]; }),
       rows: rows.slice(1).map(function (r) { var o = {}; map.forEach(function (k, i) { if (k) o[k] = String(r[i] === undefined ? '' : r[i]).trim(); }); return o; }) };
   }
-  function importDialog(centerId) {
-    var parsed = null;
-    var d = sheet('Import children from a CSV file',
-      '<p class="small muted">Save your list as CSV (in Excel or Google Sheets: File → Download → CSV). The first row must hold the column names.</p>' +
-      '<p><a href="participants-template.csv" download class="small">Download the template</a></p>' +
-      '<p class="small">Into: <strong>' + h(centerLabel(me.centers.filter(function (c) { return c.center_id === centerId; })[0])) + '</strong></p>' +
-      '<label class="field">CSV file<input type="file" name="file" accept=".csv,text/csv"></label>' +
-      '<div id="preview" class="small" style="margin-top:12px"></div>',
-      'Import', function () {
-        if (!parsed || !parsed.rows.length) throw new Error('Choose a CSV file with at least one child.');
-        return Api.call('importParticipants', { center_id: centerId, rows: parsed.rows }).then(function (r) {
-          render();
-          sheet('Import finished', '<p><strong>' + r.added + '</strong> ' + (r.added === 1 ? 'child was' : 'children were') + ' added.</p>' +
-            (r.skipped.length ? '<p style="margin-top:10px">' + r.skipped.length + ' row(s) skipped:</p><ul class="small">' +
-              r.skipped.slice(0, 30).map(function (x) { return '<li>Row ' + x.row + ': ' + h(x.reason) + '</li>'; }).join('') + '</ul>' : '') +
-            (r.added ? '<p class="small muted" style="margin-top:10px">Imported children without guardian consent or full details show under “To complete”.</p>' : ''));
+  /** The app needs Code.gs of this build or newer. An older server is reported on Home and blocks the import. */
+  var SERVER_BUILD = 11;
+  function serverOld() { return !(me && me.build && parseFloat(me.build) >= SERVER_BUILD); }
+  function serverOldHtml() {
+    if (!serverOld()) return '';
+    var top = me.user.role === 'SUPER_ADMIN' || me.user.role === 'ADMIN';
+    return '<div class="card alert-card bad-card" id="server-old" role="alert"><span class="grow"><strong>The server needs updating</strong><br><span class="small">' +
+      (top ? 'This app is version ' + SERVER_BUILD + ' but the Apps Script is ' + (me.build ? 'build ' + h(me.build) : 'an older build') +
+        '. In the Sheet: Extensions → Apps Script, paste the new Code.gs, run setup, then Deploy → Manage deployments → New version. Until then some forms may still ask for an age, and Import is blocked.'
+        : 'The app was updated but the server not yet, so some forms may not work as expected. Tell your coordinator.') + '</span></span></div>';
+  }
+  /* The template: the columns the import reads, with what to put in each. */
+  var TEMPLATE_COLS = [
+    ['name', 'Full name. The only column that must be filled.', 'Musa Kollie'],
+    ['birth_date', 'Date of birth, e.g. 2015-04-09 (or a date in Excel). Optional.', '2015-04-09'],
+    ['phone', 'The child\'s own phone. Optional.', '0886123456'],
+    ['guardian_name', 'Parent or guardian. Optional.', 'Mary Kollie'],
+    ['guardian_phone', 'The guardian\'s phone. Optional.', '0770123456'],
+    ['school', 'Optional.', 'St. Teresa School'],
+    ['join_date', 'When he started coming. Optional; empty means the import day.', '2026-01-31'],
+    ['guardian_consent', 'yes if the guardian agrees we keep these details. Optional.', 'yes']
+  ];
+  function downloadBlob(blob, name) {
+    var url = URL.createObjectURL(blob), a = document.createElement('a');
+    a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+  }
+  function excelTemplate() {
+    downloadBlob(window.Xlsx.build([
+      { name: 'Children', head: TEMPLATE_COLS.map(function (c) { return c[0]; }), rows: [] },
+      { name: 'How to fill', head: ['Column', 'What to put', 'Example'], rows: TEMPLATE_COLS.concat([
+        ['', '', ''], ['Note', 'Fill the Children sheet, one child per row, and keep the first row as it is. Missing details can be added later in the app.', '']]) }
+    ]), 'children-import-template.xlsx');
+  }
+  /** Reads the chosen file (CSV or Excel) into rows of cells. */
+  function readImportFile(file) {
+    var isXlsx = /\.xlsx$/i.test(file.name) || /spreadsheetml/.test(file.type);
+    if (/\.xls$/i.test(file.name)) return Promise.reject(new Error('This is an old Excel file (.xls). In Excel choose Save As → Excel Workbook (.xlsx), or CSV.'));
+    return new Promise(function (ok, no) {
+      var rd = new FileReader();
+      rd.onerror = function () { no(new Error('The file could not be read.')); };
+      rd.onload = function () { ok(rd.result); };
+      if (isXlsx) rd.readAsArrayBuffer(file); else rd.readAsText(file);
+    }).then(function (data) {
+      if (!isXlsx) return parseCsv(data);
+      return window.Xlsx.read(data).then(function (rows) {
+        return rows.map(function (r, i) {   // Excel turns dates into day numbers and drops a phone's leading 0
+          return i === 0 ? r : r.map(function (v, k) {
+            var hd = String(rows[0][k] || '').toLowerCase();
+            if (/birth|join|date/.test(hd) && /^\d{4,5}(\.\d+)?$/.test(v)) return window.Xlsx.serialDate(v);
+            if (/phone|mobile|contact/.test(hd) && /^[78]\d{8}$/.test(v)) return '0' + v;
+            return v;
+          });
         });
       });
+    });
+  }
+  function importDialog(centerId) {
+    var parsed = null, preview = null, center = me.centers.filter(function (c) { return c.center_id === centerId; })[0];
+    var d = sheet('Import children',
+      '<p class="small">Into <strong>' + h(centerLabel(center)) + '</strong>. Use a list you already have, or fill in the template: one child per row. Only the name is needed; the rest can be added later.</p>' +
+      '<div class="actions"><button type="button" class="btn quiet mini" id="tpl-xl">' + ICON.excel + ' Excel template</button>' +
+        '<a class="btn quiet mini" href="participants-template.csv" download>CSV template</a></div>' +
+      '<label class="field">Your file<span class="hint">Excel (.xlsx) or CSV, at most 300 children</span><input type="file" name="file" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"></label>' +
+      '<div id="preview"></div>',
+      'Import', function () {
+        if (!preview) throw new Error('Choose a file first. The app shows what will be added before anything is saved.');
+        if (!preview.will_add) throw new Error('Nothing new to import from this file.');
+        return Api.call('importParticipants', { center_id: centerId, rows: parsed.rows }).then(function (r) {
+          pState.how = r.import_id; pState.show = 'active';
+          render(); importResult(r);
+        });
+      });
+    var go = $('button[type=submit]', d); go.disabled = true;
+    $('#tpl-xl', d).onclick = excelTemplate;
     $('[name=file]', d).onchange = function () {
-      var file = this.files[0], box = $('#preview', d); parsed = null; box.textContent = '';
+      var file = this.files[0], box = $('#preview', d); parsed = null; preview = null; box.innerHTML = ''; go.disabled = true; go.textContent = 'Import';
       if (!file) return;
-      if (file.size > 500000) { box.innerHTML = '<span class="error">That file is too large.</span>'; return; }
-      var rd = new FileReader();
-      rd.onload = function () {
-        try {
-          var rows = parseCsv(rd.result);
-          if (rows.length < 2) throw new Error('The file has no children under the header row.');
-          parsed = csvToObjects(rows);
-          if (parsed.rows.length > 300) throw new Error('Import at most 300 children at a time. Split the file.');
-          box.innerHTML = '<p><strong>' + parsed.rows.length + '</strong> row(s) found. Columns used: ' + h(parsed.columns.join(', ')) + '.</p>' +
-            (parsed.unknown.length ? '<p class="muted">Ignored columns: ' + h(parsed.unknown.join(', ')) + '</p>' : '') +
-            '<p class="muted">First: ' + h(parsed.rows[0].name || '(no name)') + '</p>';
-        } catch (e) { parsed = null; box.innerHTML = '<span class="error">' + h(e.message) + '</span>'; }
-      };
-      rd.readAsText(file);
+      if (file.size > 2000000) { box.innerHTML = '<p class="error">That file is too large.</p>'; return; }
+      box.innerHTML = '<p class="small muted">Checking the file…</p>';
+      if (serverOld()) { box.innerHTML = '<p class="error">Import is blocked until the server is updated (Code.gs build ' + SERVER_BUILD + '). Ask your Super Admin.</p>'; return; }
+      readImportFile(file).then(function (rows) {
+        if (rows.length < 2) throw new Error('The file has no children under the first row.');
+        parsed = csvToObjects(rows);
+        if (parsed.rows.length > 300) throw new Error('Import at most 300 children at a time. Split the file.');
+        return Api.call('importParticipants', { center_id: centerId, rows: parsed.rows, preview: true });
+      }).then(function (pv) {
+        preview = pv; box.innerHTML = previewHtml(pv, parsed);
+        go.disabled = !pv.will_add; go.textContent = pv.will_add ? 'Import ' + plural(pv.will_add, 'child', 'children') : 'Nothing to import';
+      }).catch(function (e) { parsed = null; preview = null; box.innerHTML = '<p class="error">' + h(e.message) + '</p>'; });
     };
+  }
+  function previewHtml(pv, parsed) {
+    var add = pv.rows.filter(function (r) { return r.status === 'add'; }), dup = pv.rows.filter(function (r) { return r.status === 'duplicate'; }),
+      bad = pv.rows.filter(function (r) { return r.status === 'error'; });
+    var miss = function (m) { var x = (m || []).filter(function (y) { return y !== 'guardian consent'; }); return x.length ? 'no ' + x.join(', no ') : ''; };
+    var list = function (rows, fn) { return '<ul class="pv-list">' + rows.slice(0, 300).map(fn).join('') + '</ul>'; };
+    return '<div class="pv">' +
+      '<div class="pv-sum"><span class="pv-n ok"><b>' + pv.will_add + '</b> will be added</span>' +
+        (dup.length ? '<span class="pv-n"><b>' + dup.length + '</b> already there</span>' : '') +
+        (bad.length ? '<span class="pv-n bad"><b>' + bad.length + '</b> with a problem</span>' : '') + '</div>' +
+      (pv.no_phone ? '<p class="small pv-warn">' + ICON.phone + ' ' + plural(pv.no_phone, 'child', 'children') + ' to add ' + (pv.no_phone === 1 ? 'has' : 'have') + ' no phone number. They will be listed under "To complete" and Home will remind you to fill them in.</p>' : '') +
+      (parsed.unknown.length ? '<p class="small muted">Columns not used: ' + h(parsed.unknown.join(', ')) + '</p>' : '') +
+      (add.length ? '<details open><summary>Will be added (' + add.length + ')</summary>' + list(add, function (r) {
+        var m = miss(r.missing); return '<li><span>' + h(r.name) + '</span>' + (m ? '<span class="small muted">' + h(m) + '</span>' : '') + '</li>'; }) + '</details>' : '') +
+      (dup.length ? '<details><summary>Already in the center, skipped (' + dup.length + ')</summary>' + list(dup, function (r) {
+        return '<li><span>' + h(r.name) + '</span><span class="small muted">Row ' + r.row + ': ' + h(r.reason) + '</span></li>'; }) + '</details>' : '') +
+      (bad.length ? '<details' + (add.length ? '' : ' open') + '><summary>Problems, skipped (' + bad.length + ')</summary>' + list(bad, function (r) {
+        return '<li><span>Row ' + r.row + (r.name ? ': ' + h(r.name) : '') + '</span><span class="small">' + h(r.reason) + '</span></li>'; }) + '</details>' : '') +
+      '<p class="small muted">Nothing is saved until you tap Import.</p></div>';
+  }
+  function importResult(r) {
+    var noPhone = r.no_phone, d = sheet('Import finished',
+      '<p><strong>' + plural(r.added, 'child', 'children') + '</strong> added to ' + h(r.center) + '. They are marked "Imported" in the list.</p>' +
+      (r.skipped.length ? '<p class="small" style="margin-top:8px">' + r.skipped.length + ' row' + (r.skipped.length === 1 ? '' : 's') + ' skipped (already there or with a problem).</p>' : '') +
+      (noPhone ? '<p class="small pv-warn" style="margin-top:8px">' + ICON.phone + ' ' + plural(noPhone, 'child', 'children') + ' still need a phone number. You will find them under "To complete", and Home reminds you.</p>' : '') +
+      '<button type="button" class="btn block" id="see-imp" style="margin-top:14px">Show the imported children</button>');
+    $('#see-imp', d).onclick = function () { d.close(); pState.how = r.import_id; pState.show = 'active'; go('#/participants'); render(); };
   }
 
   /* ---------- charts ---------- */
@@ -2255,7 +2366,7 @@
       installHtml(true) +
       '<button type="button" class="btn quiet block" id="tour-again">' + ICON.help + ' Show the tips again</button>' +
       '<button class="btn danger block" id="out">Sign out</button>' +
-      '<p class="small muted center">Outreach Tracker, version 10.1</p>';
+      '<p class="small muted center">Outreach Tracker, version 11</p>';
     $('#my').onclick = myDetailsForm;
     wireInstall(el);
     var cr = $('#child-rules', el); if (cr) cr.onclick = childRulesForm;
@@ -2381,12 +2492,13 @@
     },
     participants: function (x) {
       return { title: 'Children', steps: [
-        'Tap "+ Add child". Only the name is needed at first' + (me.rules && me.rules.require_child_phone === false ? '' : ', with one phone number (the child\'s or the guardian\'s)') + '.',
+        'Tap "+ Add child". Only the name is needed at first' + (me.rules && me.rules.require_child_phone === true ? ', with one phone number (the child\'s or the guardian\'s)' : '') + '.',
+        'Import adds many children from an Excel or CSV file. Download the template, fill it, choose the file: the app shows who will be added before saving. Imported children are marked "Imported", and the list can be filtered by import.',
         'Missing a date of birth or the guardian\'s consent? Choose "Save, I will fill them later". The child shows under "To complete" and Home reminds you.',
         '"Message all" sends one message to every child, every guardian, or both, from your phone.',
         'Tap a child to see his attendance, decisions and contacts, or to edit him.',
         '"To complete" lists what is still missing for each child. Tap the child, then "Edit details".',
-        x.record ? 'Import CSV adds many children at once from a spreadsheet.' : null],
+        null],
         tour: [['#msg-all', 'Send one message to all the children, their guardians, or both.'], ['#add-p', 'Add a new child here.']] };
     },
     stats: function () {
