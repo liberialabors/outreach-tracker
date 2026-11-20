@@ -483,7 +483,7 @@
     if (H.to_complete && H.to_complete.count) {
       var tc = H.to_complete.count;
       html += '<a class="card alert-card" href="#/participants/incomplete" id="to-complete"><span class="grow"><strong>' + plural(tc, 'child', 'children') + (tc === 1 ? ' has' : ' have') + ' details to fill in</strong>' +
-        '<br><span class="small">Date of birth, a phone number or the guardian\'s consent. Tap to complete them now.</span></span><span aria-hidden="true">›</span></a>';
+        '<br><span class="small">A phone number, address, date of birth or the guardian\'s consent. Tap to complete them now.</span></span><span aria-hidden="true">›</span></a>';
     }
     if ((me.jobs || []).length) html += '<h3>Handed to you</h3>' + me.jobs.map(jobCard).join('');
     if (!H.stats && H.followups && (H.followups.count || H.followups.birthdays)) {
@@ -952,7 +952,7 @@
         attendance: people.map(function (p) { return { participant_id: p.participant_id, present: !!present[p.participant_id] }; }),
         new_participants: newcomers.map(function (p) {
           return { temp_id: p.temp_id, name: p.name, age: p.age, birth_date: p.birth_date, phone: p.phone, guardian_name: p.guardian_name,
-            guardian_phone: p.guardian_phone, school: p.school, guardian_consent: p.guardian_consent };
+            guardian_phone: p.guardian_phone, school: p.school, address: p.address, guardian_consent: p.guardian_consent };
         }),
         custom_decisions: kinds.filter(function (k) { return Object.keys(decisions).some(function (id) { return decisions[id] === 'other:' + k; }); }),
         decisions: Object.keys(decisions).map(function (id) {
@@ -1089,7 +1089,7 @@
    * onSave(values) may return a promise; throw or reject to show the message in the form.
    */
   function participantForm(p, centerId, onSave, firstTimer) {
-    var v = p || { name: '', birth_date: '', phone: '', guardian_name: '', guardian_phone: '', school: '', guardian_consent: false };
+    var v = p || { name: '', birth_date: '', phone: '', guardian_name: '', guardian_phone: '', school: '', address: '', guardian_consent: false };
     var needPhone = !!(me.rules && me.rules.require_child_phone === true);
     var phoneHint = needPhone ? 'The child\'s or the guardian\'s: at least one is needed' : 'Optional';
     var today = me.today || new Date().toISOString().slice(0, 10);
@@ -1101,6 +1101,7 @@
       '<label class="field">Guardian\'s name<span class="hint">Optional</span><input type="text" name="guardian_name" value="' + h(v.guardian_name) + '" autocomplete="off"></label>' +
       '<label class="field">Guardian\'s phone<span class="hint">' + phoneHint + '</span><input type="tel" name="guardian_phone" inputmode="tel" value="' + h(v.guardian_phone) + '" placeholder="0770 000 000"></label>' +
       '<label class="field">Child\'s own phone<span class="hint">' + phoneHint + '</span><input type="tel" name="phone" inputmode="tel" value="' + h(v.phone) + '" placeholder="0880 000 000"></label>' +
+      '<label class="field">Address<span class="hint">Where he lives: community, street or a landmark. Optional, but please fill it in.</span><input type="text" name="address" value="' + h(v.address || '') + '" autocomplete="off" maxlength="200" placeholder="e.g. Duazon, near the water pump"></label>' +
       '<label class="field">School<span class="hint">Optional</span><input type="text" name="school" value="' + h(v.school) + '"></label>' +
       '<label class="check consent"><input type="checkbox" name="consent"' + (v.guardian_consent ? ' checked' : '') + '><span><strong>The guardian agrees</strong> that we keep these details to follow up with the child.' +
         '</span></label>' +
@@ -1111,7 +1112,7 @@
         var f = form.elements, box = $('.later', form);
         var vals = { participant_id: p ? p.participant_id : undefined, center_id: centerId, name: f.name.value.trim().replace(/\s+/g, ' '),
           birth_date: f.birth_date.value, guardian_name: f.guardian_name.value.trim(), guardian_phone: f.guardian_phone.value.trim(),
-          phone: f.phone.value.trim(), school: f.school.value.trim(), guardian_consent: f.consent.checked };
+          phone: f.phone.value.trim(), school: f.school.value.trim(), address: f.address.value.trim(), guardian_consent: f.consent.checked };
         if (vals.name.length < 2) throw new Error('Enter the full name.');
         if (vals.birth_date && (vals.birth_date > today || vals.birth_date < '1990-01-01')) throw new Error('Check the date of birth.');
         var gd = vals.guardian_phone.replace(/\D/g, '').length, cd = vals.phone.replace(/\D/g, '').length;
@@ -1120,6 +1121,7 @@
         if (needPhone && !gd && !cd) { f.guardian_phone.focus(); throw new Error('Enter at least one phone number: the child\'s or the guardian\'s.'); }
         var missing = [];
         if (!gd && !cd) missing.push('a phone number (child\'s or guardian\'s)');
+        if (!vals.address) missing.push('address');
         if (!vals.birth_date) missing.push('date of birth');
         if (!vals.guardian_consent) missing.push('the guardian\'s consent');
         if (missing.length && form.dataset.later !== '1') {   // ask once: fill now or later
@@ -1127,7 +1129,7 @@
           box.hidden = false; box.scrollIntoView({ block: 'nearest' });
           $('[data-l=now]', box).onclick = function () {
             box.hidden = true;
-            (!gd && !cd ? f.guardian_phone : !vals.birth_date ? f.birth_date : f.consent).focus();
+            (!gd && !cd ? f.guardian_phone : !vals.address ? f.address : !vals.birth_date ? f.birth_date : f.consent).focus();
           };
           $('[data-l=later]', box).onclick = function () { form.dataset.later = '1'; form.requestSubmit(); };
           return true;   // keep the form open
@@ -1152,6 +1154,7 @@
         row('Child\'s phone', p.phone ? h(p.phone) : '<span class="muted">None</span>') +
         row('Guardian', p.guardian_name ? h(p.guardian_name) : '<span class="muted">Not filled in</span>') +
         row('Guardian\'s phone', p.guardian_phone ? h(p.guardian_phone) : '<span class="muted">None</span>') +
+        row('Address', p.address ? h(p.address) : '<span class="muted">Not filled in</span>') +
         row('School', p.school ? h(p.school) : '<span class="muted">Not filled in</span>') +
         row('Joined', h(fmtDate(p.join_date))) +
         row('Added', h(p.added_via === 'import' ? 'By import on ' + fmtDate(String(p.created_at).slice(0, 10)) : p.added_via === 'first_timer' ? 'As a first-timer at the ' + fmtDate(p.join_date) + ' meeting' :
@@ -1172,7 +1175,7 @@
           return Api.call('saveParticipant', vals).then(function () { toast('Saved'); render(); });
         });
         if (a === 'del') {
-          var typed = prompt('This permanently erases ' + p.name + '\'s name, phone, guardian and school. ' +
+          var typed = prompt('This permanently erases ' + p.name + '\'s name, phone, guardian, address and school. ' +
             'Past attendance totals stay the same but no longer show his name. There is no undo.\n\nType DELETE to confirm.');
           if (typed !== 'DELETE') { if (typed !== null) toast('Nothing was deleted. Type DELETE in capitals.', true); return; }
         }
@@ -1207,6 +1210,7 @@
     age: /^age$/, birth_date: /^(birth ?date|date of birth|dob|birthday)$/,
     phone: /^(phone|child('?s)? phone|mobile)$/, guardian_name: /^(guardian|guardian('?s)? name|parent('?s)? name|parent)$/,
     guardian_phone: /^(guardian('?s)? phone|parent('?s)? phone|guardian ?contact)$/, school: /^school$/,
+    address: /^(address|home address|home|residence|community|where (he|she|they) lives?|location)$/,
     join_date: /^(join ?date|joined|date joined)$/, guardian_consent: /^(guardian ?consent|consent)$/
   };
   function csvToObjects(rows) {
@@ -1217,7 +1221,7 @@
       rows: rows.slice(1).map(function (r) { var o = {}; map.forEach(function (k, i) { if (k) o[k] = String(r[i] === undefined ? '' : r[i]).trim(); }); return o; }) };
   }
   /** The app needs Code.gs of this build or newer. An older server is reported on Home and blocks the import. */
-  var SERVER_BUILD = 11;
+  var SERVER_BUILD = 11.1;
   function serverOld() { return !(me && me.build && parseFloat(me.build) >= SERVER_BUILD); }
   function serverOldHtml() {
     if (!serverOld()) return '';
@@ -1234,6 +1238,7 @@
     ['phone', 'The child\'s own phone. Optional.', '0886123456'],
     ['guardian_name', 'Parent or guardian. Optional.', 'Mary Kollie'],
     ['guardian_phone', 'The guardian\'s phone. Optional.', '0770123456'],
+    ['address', 'Where he lives: community, street or landmark. Optional, but please fill it in.', 'Duazon, near the water pump'],
     ['school', 'Optional.', 'St. Teresa School'],
     ['join_date', 'When he started coming. Optional; empty means the import day.', '2026-01-31'],
     ['guardian_consent', 'yes if the guardian agrees we keep these details. Optional.', 'yes']
@@ -2366,7 +2371,7 @@
       installHtml(true) +
       '<button type="button" class="btn quiet block" id="tour-again">' + ICON.help + ' Show the tips again</button>' +
       '<button class="btn danger block" id="out">Sign out</button>' +
-      '<p class="small muted center">Outreach Tracker, version 11</p>';
+      '<p class="small muted center">Outreach Tracker, version 11.1</p>';
     $('#my').onclick = myDetailsForm;
     wireInstall(el);
     var cr = $('#child-rules', el); if (cr) cr.onclick = childRulesForm;
