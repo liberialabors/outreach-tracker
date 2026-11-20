@@ -33,6 +33,9 @@
     templates: '<svg viewBox="0 0 24 24"><path d="M4 5h16v11H8l-4 4z"/><path d="M8 9h8M8 12h5"/></svg>',
     excel: '<svg viewBox="0 0 24 24"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5M10 12l4 5M14 12l-4 5"/></svg>',
     help: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 114 2c-.9.6-1.5 1.1-1.5 2.2"/><path d="M12 17h.01"/></svg>',
+    call: '<svg viewBox="0 0 24 24"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z"/></svg>',
+    wa: '<svg viewBox="0 0 24 24"><path d="M4 20l1.3-4A8 8 0 1112 20a8 8 0 01-4-1z"/><path d="M9 9.5c0 3 2.5 5.5 5.5 5.5l1-1.5-2-1-1 .8a4 4 0 01-1.8-1.8l.8-1-1-2z"/></svg>',
+    sms: '<svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 10h.01M12 10h.01M16 10h.01"/></svg>',
     phone: '<svg viewBox="0 0 24 24"><rect x="6.5" y="2.5" width="11" height="19" rx="2.5"/><path d="M10.5 18.5h3"/></svg>',
     google: '<svg viewBox="0 0 24 24"><path d="M20.6 12.2c0-.6-.1-1.2-.2-1.8H12v3.4h4.8a4.1 4.1 0 01-1.8 2.7v2.2h2.9c1.7-1.6 2.7-3.9 2.7-6.5z" fill="#4285F4" stroke="none"/><path d="M12 21c2.4 0 4.5-.8 5.9-2.2l-2.9-2.2c-.8.5-1.8.9-3 .9-2.3 0-4.3-1.6-5-3.7H4v2.3A9 9 0 0012 21z" fill="#34A853" stroke="none"/><path d="M7 13.8a5.4 5.4 0 010-3.5V8H4a9 9 0 000 8.1z" fill="#FBBC05" stroke="none"/><path d="M12 6.6c1.3 0 2.5.5 3.4 1.3l2.6-2.6A9 9 0 004 8l3 2.3c.7-2.1 2.7-3.7 5-3.7z" fill="#EA4335" stroke="none"/></svg>'
   };
@@ -62,6 +65,7 @@
   function centerLabel(c) { return me.programs.length > 1 ? programName(c.program_id) + ' — ' + c.name : c.name; }
   function waNumber(phone) {
     var d = String(phone || '').replace(/\D/g, '');
+    if (d.length < 7) return '';   // empty or too short to be a number
     if (d.indexOf('00') === 0) return d.slice(2);
     if (d.charAt(0) === '0') return me.country_code + d.slice(1);
     return d.length <= 9 ? me.country_code + d : d;
@@ -476,6 +480,11 @@
       (tm ? '<p class="month">' + h(monthName) + ' so far, ' + plural(tm.reports, 'report') + '</p>' : '') + '</section>' +
       homeCards(H, today);
     if (Auth.isShared()) html += '<div class="card alert-card"><span class="grow"><strong>Borrowed phone</strong><br><span class="small">You will be signed out when you close the app. Tap More, then Sign out, when you finish.</span></span></div>';
+    if (H.to_complete && H.to_complete.count) {
+      var tc = H.to_complete.count;
+      html += '<a class="card alert-card" href="#/participants/incomplete" id="to-complete"><span class="grow"><strong>' + plural(tc, 'child', 'children') + (tc === 1 ? ' has' : ' have') + ' details to fill in</strong>' +
+        '<br><span class="small">Date of birth, a phone number or the guardian\'s consent. Tap to complete them now.</span></span><span aria-hidden="true">›</span></a>';
+    }
     if ((me.jobs || []).length) html += '<h3>Handed to you</h3>' + me.jobs.map(jobCard).join('');
     if (!H.stats && H.followups && (H.followups.count || H.followups.birthdays)) {
       var n = H.followups.count, b = H.followups.birthdays;
@@ -994,7 +1003,8 @@
   /* ---------- participants ---------- */
   var pState = { center: '', q: '', show: 'active' };
   function recordCenters(kind) { return jobCenters(kind || 'children'); }
-  function viewParticipants(el) {
+  function viewParticipants(el, args) {
+    if (args && args[0] === 'incomplete') { pState.show = 'incomplete'; history.replaceState(null, '', '#/participants'); }
     var centers = recordCenters('children');
     if (!pState.center || !centers.some(function (c) { return c.center_id === pState.center; })) pState.center = centers.length ? centers[0].center_id : '';
     if (!centers.length) { el.innerHTML = '<h1>Children</h1><div class="card empty">No active center is assigned to you.</div>'; return; }
@@ -1009,7 +1019,7 @@
         '<div class="seg small-seg">' + [['active', 'Active ' + counts.active], ['inactive', 'Inactive ' + counts.inactive], ['incomplete', 'To complete ' + counts.incomplete]].map(function (x) {
           return '<label><input type="radio" name="show" value="' + x[0] + '"' + (pState.show === x[0] ? ' checked' : '') + '><span>' + x[1] + '</span></label>'; }).join('') + '</div>' +
         '<input type="search" id="pq" placeholder="Find a name" value="' + h(pState.q) + '" autocomplete="off">' +
-        '<div class="list" id="plist"></div>' +
+        '<div class="kids" id="plist"></div>' +
         '<button class="btn fab" id="add-p">+ Add child</button>';
       function draw() {
         var q = pState.q.toLowerCase();
@@ -1018,12 +1028,15 @@
           return !q || p.name.toLowerCase().indexOf(q) !== -1;
         });
         $('#plist', el).innerHTML = shown.length ? shown.map(function (p) {
-          return '<button type="button" class="row" data-id="' + h(p.participant_id) + '"><span class="avatar">' + h(initials(p.name)) + '</span>' +
-            '<span class="grow"><span class="name">' + h(p.name) + '</span><br><span class="sub">' + (p.age ? h(p.age) + ' yrs' : 'Age missing') +
+          var contacts = kidContacts(p);
+          return '<div class="kid' + (contacts ? '' : ' no-phone') + '"><button type="button" class="row" data-id="' + h(p.participant_id) + '"><span class="avatar">' + h(initials(p.name)) + '</span>' +
+            '<span class="grow"><span class="name">' + h(p.name) + '</span><br><span class="sub">' + (p.age !== '' && p.age !== undefined ? h(p.age) + ' yrs' : 'No date of birth') +
             (p.guardian_name ? ' · ' + h(p.guardian_name) : '') + '</span><br>' +
+            (pState.show === 'incomplete' && (p.missing || []).length ? '<span class="small muted">Missing: ' + h(p.missing.join(', ')) + '</span><br>' : '') +
             (p.status === 'inactive' ? '<span class="badge off">Inactive</span>' : '') +
             (p.incomplete ? '<span class="badge warn">Details missing</span>' : '') +
-            (!p.guardian_consent ? '<span class="badge bad">No guardian consent</span>' : '') + '</span></button>';
+            (!p.guardian_consent ? '<span class="badge bad">No guardian consent</span>' : '') + '</span><span class="chev" aria-hidden="true">›</span></button>' +
+            (contacts ? '<div class="kid-c">' + contacts + '</div>' : '<p class="kid-c small muted">No phone number yet</p>') + '</div>';
         }).join('') : '<div class="empty">' + (list.length ? 'Nobody in this list.' : 'No children yet. Tap “+ Add child” or import a CSV file.') + '</div>';
         $all('#plist .row', el).forEach(function (b) {
           b.onclick = function () { participantActions(list.filter(function (p) { return p.participant_id === b.dataset.id; })[0]); };
@@ -1049,36 +1062,73 @@
    * onSave(values) may return a promise; throw or reject to show the message in the form.
    */
   function participantForm(p, centerId, onSave, firstTimer) {
-    var v = p || { name: '', age: '', birth_date: '', phone: '', guardian_name: '', guardian_phone: '', school: '', guardian_consent: false };
-    sheet(p ? 'Edit ' + p.name : firstTimer ? 'Add a first-timer' : 'Add a child',
+    var v = p || { name: '', birth_date: '', phone: '', guardian_name: '', guardian_phone: '', school: '', guardian_consent: false };
+    var needPhone = !(me.rules && me.rules.require_child_phone === false);
+    var phoneHint = needPhone ? 'The child\'s or the guardian\'s: at least one is needed' : 'Optional';
+    var today = me.today || new Date().toISOString().slice(0, 10);
+    var d = sheet(p ? 'Edit ' + p.name : firstTimer ? 'Add a first-timer' : 'Add a child',
       '<label class="field">Full name<input type="text" name="name" value="' + h(v.name) + '" autocomplete="off" required></label>' +
-      '<div class="two"><label class="field">Age<input type="text" name="age" inputmode="numeric" maxlength="2" value="' + h(v.age) + '" required></label>' +
-      '<label class="field">Date of birth<span class="hint">Optional</span><input type="date" name="birth_date" value="' + h(v.birth_date) + '"></label></div>' +
+      '<label class="field">Date of birth<span class="hint">Optional now. You can add it later.</span><input type="date" name="birth_date" max="' + h(today) + '" min="1990-01-01" value="' + h(v.birth_date) + '"></label>' +
+      (needPhone ? '<p class="small muted phone-rule">' + ICON.phone + ' Give at least one phone number: the child\'s or the guardian\'s.</p>' : '') +
       '<label class="field">Guardian\'s name<span class="hint">Optional</span><input type="text" name="guardian_name" value="' + h(v.guardian_name) + '" autocomplete="off"></label>' +
-      '<label class="field">Guardian\'s phone<span class="hint">Optional</span><input type="tel" name="guardian_phone" inputmode="tel" value="' + h(v.guardian_phone) + '" placeholder="0770 000 000"></label>' +
-      '<label class="field">Child\'s own phone<span class="hint">Optional</span><input type="tel" name="phone" inputmode="tel" value="' + h(v.phone) + '"></label>' +
+      '<label class="field">Guardian\'s phone<span class="hint">' + phoneHint + '</span><input type="tel" name="guardian_phone" inputmode="tel" value="' + h(v.guardian_phone) + '" placeholder="0770 000 000"></label>' +
+      '<label class="field">Child\'s own phone<span class="hint">' + phoneHint + '</span><input type="tel" name="phone" inputmode="tel" value="' + h(v.phone) + '" placeholder="0880 000 000"></label>' +
       '<label class="field">School<span class="hint">Optional</span><input type="text" name="school" value="' + h(v.school) + '"></label>' +
       '<label class="check consent"><input type="checkbox" name="consent"' + (v.guardian_consent ? ' checked' : '') + '><span><strong>The guardian agrees</strong> that we keep these details to follow up with the child.' +
-        (firstTimer ? '<br><span class="small muted">Needed before a first-timer can be added.</span>' : '') + '</span></label>',
+        (firstTimer ? '<br><span class="small muted">Needed before a first-timer can be added.</span>' : '') + '</span></label>' +
+      '<div class="later card" hidden><p><strong>Some details are missing</strong></p><p class="small later-what"></p>' +
+        '<p class="small muted">You can fill them now, or save and fill them later. The child is then listed under Children → To complete, with a reminder on Home.</p>' +
+        '<div class="stack"><button type="button" class="btn quiet block" data-l="now">Fill them now</button><button type="button" class="btn block" data-l="later">Save, I will fill them later</button></div></div>',
       p ? 'Save' : firstTimer ? 'Add and mark present' : 'Add child', function (form) {
-        var f = form.elements;
-        var vals = { participant_id: p ? p.participant_id : undefined, center_id: centerId, name: f.name.value.trim().replace(/\s+/g, ' '), age: f.age.value.trim(),
+        var f = form.elements, box = $('.later', form);
+        var vals = { participant_id: p ? p.participant_id : undefined, center_id: centerId, name: f.name.value.trim().replace(/\s+/g, ' '),
           birth_date: f.birth_date.value, guardian_name: f.guardian_name.value.trim(), guardian_phone: f.guardian_phone.value.trim(),
           phone: f.phone.value.trim(), school: f.school.value.trim(), guardian_consent: f.consent.checked };
         if (vals.name.length < 2) throw new Error('Enter the full name.');
-        if (!/^\d{1,2}$/.test(vals.age)) throw new Error('Enter the age as a number, e.g. 12.');
-        var gd = vals.guardian_phone.replace(/\D/g, '').length;
+        if (vals.birth_date && (vals.birth_date > today || vals.birth_date < '1990-01-01')) throw new Error('Check the date of birth.');
+        var gd = vals.guardian_phone.replace(/\D/g, '').length, cd = vals.phone.replace(/\D/g, '').length;
         if (gd && gd < 7) throw new Error('The guardian\'s phone number looks too short. Correct it or leave it empty.');
+        if (cd && cd < 7) throw new Error('The child\'s phone number looks too short. Correct it or leave it empty.');
+        if (needPhone && !gd && !cd) { f.guardian_phone.focus(); throw new Error('Enter at least one phone number: the child\'s or the guardian\'s.'); }
         if (firstTimer && !vals.guardian_consent) throw new Error('Tick the guardian consent to add a first-timer.');
+        var missing = [];
+        if (!vals.birth_date) missing.push('date of birth');
+        if (!gd && !cd) missing.push('a phone number');
+        if (!vals.guardian_consent) missing.push('the guardian\'s consent');
+        if (missing.length && form.dataset.later !== '1') {   // ask once: fill now or later
+          $('.later-what', box).textContent = 'Not filled in: ' + missing.join(', ') + '.';
+          box.hidden = false; box.scrollIntoView({ block: 'nearest' });
+          $('[data-l=now]', box).onclick = function () {
+            box.hidden = true;
+            (!vals.birth_date ? f.birth_date : !gd && !cd ? f.guardian_phone : f.consent).focus();
+          };
+          $('[data-l=later]', box).onclick = function () { form.dataset.later = '1'; form.requestSubmit(); };
+          return true;   // keep the form open
+        }
         return onSave(vals);
       });
+    return d;
   }
 
   function participantActions(p) {
-    var d = sheet(p.name, '<p class="muted">' + (p.age ? h(p.age) + ' yrs · ' : '') + 'joined ' + h(fmtDate(p.join_date)) + '</p>' +
-      (p.guardian_name ? '<p class="small">Guardian: ' + h(p.guardian_name) + (p.guardian_phone ? ' · ' + h(p.guardian_phone) : '') + '</p>' : '') +
-      (p.school ? '<p class="small muted">' + h(p.school) + '</p>' : '') +
-      '<p class="small">' + (p.guardian_consent ? 'Guardian consent given ' + h(fmtDate(p.consent_date)) : '<span class="badge bad">No guardian consent recorded</span>') + '</p>' +
+    var row = function (k, v) { return '<div class="pk-r"><dt>' + h(k) + '</dt><dd>' + v + '</dd></div>'; };
+    var missing = (p.missing || []).filter(function (x) { return x !== 'guardian consent'; });
+    var contacts = kidContacts(p);
+    var d = sheet(p.name,
+      '<div class="peek"><span class="avatar big">' + h(initials(p.name)) + '</span><div><p class="muted">' + h(centerName(p.center_id) || '') +
+        (p.status === 'inactive' ? ' · <span class="badge off">Inactive</span>' : '') + '</p>' +
+        '<p class="pk-age">' + (p.age !== '' && p.age !== undefined && p.age !== null ? h(p.age) + ' years old' : 'Age not known') + '</p></div></div>' +
+      (missing.length ? '<div class="card alert-card"><span class="grow"><strong>To complete</strong><br><span class="small">Missing: ' + h(p.missing.join(', ')) + '. Tap "Edit details" to fill them in.</span></span></div>' : '') +
+      (contacts ? '<div class="kid-c in-peek">' + contacts + '</div>' : '') +
+      '<dl class="pk">' +
+        row('Date of birth', p.birth_date ? h(fmtDate(p.birth_date)) : '<span class="muted">Not filled in</span>') +
+        row('Child\'s phone', p.phone ? h(p.phone) : '<span class="muted">None</span>') +
+        row('Guardian', p.guardian_name ? h(p.guardian_name) : '<span class="muted">Not filled in</span>') +
+        row('Guardian\'s phone', p.guardian_phone ? h(p.guardian_phone) : '<span class="muted">None</span>') +
+        row('School', p.school ? h(p.school) : '<span class="muted">Not filled in</span>') +
+        row('Joined', h(fmtDate(p.join_date))) +
+        row('Consent', p.guardian_consent ? 'Given ' + h(fmtDate(p.consent_date)) : '<span class="badge bad">Not recorded</span>') +
+      '</dl>' +
       '<div class="stack" style="margin-top:16px">' +
       '<button type="button" class="btn block" data-a="hist">Attendance and follow-up history</button>' +
       '<button type="button" class="btn quiet block" data-a="edit">Edit details</button>' +
@@ -1280,6 +1330,18 @@
     return String(text || '').replace(/\{(\w+)\}/g, function (m, k) { return ctx[k] !== undefined && ctx[k] !== '' ? ctx[k] : m; });
   }
   function telNumber(phone) { var n = waNumber(phone); return n ? '+' + n : ''; }
+  /** Call, WhatsApp and SMS for one number, straight from the phone. */
+  function contactLine(label, who, phone, greetName) {
+    var n = waNumber(phone); if (!n) return '';
+    var hello = 'Hello' + (greetName ? ' ' + greetName : '') + ', ';
+    return '<div class="cline"><span class="cl-who"><span class="cl-l">' + h(label) + (who ? ' · ' + h(who) : '') + '</span><span class="cl-n">' + h(phone) + '</span></span>' +
+      '<a class="ib" href="tel:+' + n + '" aria-label="Call ' + h(label) + '">' + ICON.call + '</a>' +
+      '<a class="ib" href="https://wa.me/' + n + '?text=' + encodeURIComponent(hello) + '" target="_blank" rel="noopener" aria-label="WhatsApp ' + h(label) + '">' + ICON.wa + '</a>' +
+      '<a class="ib" href="sms:+' + n + '?body=' + encodeURIComponent(hello) + '" aria-label="SMS ' + h(label) + '">' + ICON.sms + '</a></div>';
+  }
+  function kidContacts(p) {
+    return contactLine('Child', '', p.phone, firstName(p.name)) + contactLine('Guardian', '', p.guardian_phone, firstName(p.guardian_name));
+  }
   function firstName(n) { return String(n || '').trim().split(/\s+/)[0]; }
 
   function viewFollowUp(el) {
@@ -2189,12 +2251,14 @@
       (me.can.settings ? '<h3>Super Admin</h3><div class="list">' +
         '<button type="button" class="row" id="settings"><span class="grow"><span class="name">System settings</span><br><span class="sub">Name, sign-in, reminders</span></span></button>' +
         '<button type="button" class="row" id="shares"><span class="grow"><span class="name">Sharing between programs</span><br><span class="sub">Let one program see another\'s figures</span></span></button></div>' : '') +
+      (me.can.child_rules ? '<button type="button" class="row" id="child-rules"><span class="grow"><span class="name">Child form rules</span><br><span class="sub">Phone number ' + (me.rules.require_child_phone ? 'required' : 'optional') + '</span></span></button>' : '') +
       installHtml(true) +
       '<button type="button" class="btn quiet block" id="tour-again">' + ICON.help + ' Show the tips again</button>' +
       '<button class="btn danger block" id="out">Sign out</button>' +
-      '<p class="small muted center">Outreach Tracker, version 9</p>';
+      '<p class="small muted center">Outreach Tracker, version 10.1</p>';
     $('#my').onclick = myDetailsForm;
     wireInstall(el);
+    var cr = $('#child-rules', el); if (cr) cr.onclick = childRulesForm;
     $('#tour-again', el).onclick = function () { tourReset(); toast('The tips will show again on each screen.'); go('#/home'); };
     $('#out').onclick = signOut;
     if (me.can.settings) { $('#settings').onclick = settingsForm; $('#shares').onclick = sharesForm; }
@@ -2207,6 +2271,16 @@
     var done = function () { Auth.signOut(); showLogin(); };
     if (token) { busy(true); Api.call('logout', { token: token }).catch(function () {}).then(function () { busy(false); done(); }); }
     else done();
+  }
+  /** Admins (and Super Admins, also in System settings) choose whether every child needs a phone number. */
+  function childRulesForm() {
+    var on = me.rules.require_child_phone;
+    sheet('Child form rules', '<label class="check"><input type="checkbox" name="req"' + (on ? ' checked' : '') + '><span><strong>Every child needs a phone number</strong><br>' +
+      '<span class="small muted">The child\'s or the guardian\'s. When off, a child can be added with no number and is listed under "To complete".</span></span></label>',
+      'Save', function (form) {
+        return Api.call('saveSettings', { values: { require_child_phone: form.elements.req.checked ? 'TRUE' : 'FALSE' } })
+          .then(refreshMe).then(function () { toast('Saved'); render(); });
+      });
   }
   function settingsForm() {
     busy(true);
@@ -2307,10 +2381,11 @@
     },
     participants: function (x) {
       return { title: 'Children', steps: [
-        'Tap "+ Add child" to add a child, with the guardian\'s name, phone and consent.',
+        'Tap "+ Add child". Only the name is needed at first' + (me.rules && me.rules.require_child_phone === false ? '' : ', with one phone number (the child\'s or the guardian\'s)') + '.',
+        'Missing a date of birth or the guardian\'s consent? Choose "Save, I will fill them later". The child shows under "To complete" and Home reminds you.',
         '"Message all" sends one message to every child, every guardian, or both, from your phone.',
         'Tap a child to see his attendance, decisions and contacts, or to edit him.',
-        '"To complete" lists children without full details or the guardian\'s consent.',
+        '"To complete" lists what is still missing for each child. Tap the child, then "Edit details".',
         x.record ? 'Import CSV adds many children at once from a spreadsheet.' : null],
         tour: [['#msg-all', 'Send one message to all the children, their guardians, or both.'], ['#add-p', 'Add a new child here.']] };
     },
